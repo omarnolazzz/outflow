@@ -20,6 +20,7 @@ import '../../../notifications/presentation/screens/settings_screen.dart';
 import '../../domain/dashboard_summary.dart';
 import '../../domain/entities/subscription.dart';
 import '../subscription_providers.dart';
+import '../widgets/pending_charge_card.dart';
 import '../widgets/subscription_tile.dart';
 import '../widgets/upcoming_carousel.dart';
 import 'subscription_detail_screen.dart';
@@ -135,6 +136,26 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             child: Entrance(index: 6, child: _EmptyState(onAdd: _openCatalog)),
           )
         else ...[
+          if (summary.pending.isNotEmpty) ...[
+            SliverToBoxAdapter(
+              child: Entrance(
+                index: 6,
+                child: SectionLabel(
+                  'Confirma tu próximo cobro',
+                  trailing: Text('${summary.pending.length}', style: AppType.caption),
+                ),
+              ),
+            ),
+            for (final (i, p) in summary.pending.indexed)
+              SliverToBoxAdapter(
+                // La tarjeta se va (y las demás se recolocan) al responder.
+                child: Entrance(
+                  key: ValueKey('pending-${p.subscription.id}-${p.charge}'),
+                  index: 7 + i,
+                  child: PendingChargeCard(item: p, merchant: merchants[p.subscription.merchantId]),
+                ),
+              ),
+          ],
           if (summary.upcoming.isNotEmpty) ...[
             SliverToBoxAdapter(
               child: Entrance(

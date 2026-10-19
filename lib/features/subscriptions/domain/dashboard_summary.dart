@@ -49,6 +49,7 @@ class DashboardSummary {
     required this.billingCount,
     required this.upcoming,
     required this.byStatus,
+    this.pending = const [],
   });
 
   /// Gasto mensual equivalente por moneda; primero la más usada.
@@ -58,6 +59,9 @@ class DashboardSummary {
   /// Cobros y cierres de ventana próximos, ordenados por fecha.
   final List<UpcomingItem> upcoming;
   final Map<SubscriptionStatus, List<Subscription>> byStatus;
+
+  /// Cobros que ya pasaron y esperan confirmación (más antiguos primero).
+  final List<PendingCharge> pending;
 
   Money? get primaryMonthly => monthlyByCurrency.isEmpty ? null : monthlyByCurrency.first;
 
@@ -71,6 +75,7 @@ class DashboardSummary {
     final today = dateOnly(now);
     final totals = <String, int>{};
     final upcoming = <UpcomingItem>[];
+    final pending = <PendingCharge>[];
     final byStatus = {for (final s in SubscriptionStatus.values) s: <Subscription>[]};
 
     for (final s in subs) {
@@ -78,6 +83,9 @@ class DashboardSummary {
       if (!s.status.isBilling) continue;
 
       totals.update(s.price.currency, (v) => v + s.monthlyMinor, ifAbsent: () => s.monthlyMinor);
+
+      final asked = s.pendingCharge(today);
+      if (asked != null) pending.add(PendingCharge(subscription: s, charge: asked));
 
       final next = s.nextCharge(today)!;
       final days = next.difference(today).inDays;
@@ -136,6 +144,17 @@ class DashboardSummary {
           byStatus[SubscriptionStatus.trial]!.length,
       upcoming: upcoming.take(maxUpcoming).toList(),
       byStatus: byStatus,
+      pending: pending..sort((a, b) => a.charge.compareTo(b.charge)),
     );
   }
+}
+
+/// Pregunta "confirma tu próximo cobro" de una suscripción.
+@immutable
+class PendingCharge {
+  const PendingCharge({required this.subscription, required this.charge});
+  final Subscription subscription;
+
+  /// Cobro previsto que ya pasó.
+  final DateTime charge;
 }

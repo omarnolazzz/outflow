@@ -19,6 +19,7 @@ import '../../../notifications/presentation/notification_providers.dart';
 import '../../../notifications/presentation/widgets/notification_rule_editor.dart';
 import '../../domain/entities/subscription.dart';
 import '../subscription_providers.dart';
+import '../widgets/confirm_charge_sheet.dart';
 import '../widgets/subscription_tile.dart';
 import 'subscription_form_screen.dart';
 
@@ -155,6 +156,7 @@ class _DetailBody extends ConsumerWidget {
     final s = subscription;
     final next = s.nextCharge(now);
     final open = s.openWindow(now);
+    final pending = s.pendingCharge(now);
     final window = s.cancellationWindow;
     final global = ref.watch(globalRuleProvider).value;
 
@@ -219,6 +221,37 @@ class _DetailBody extends ConsumerWidget {
             ],
           ),
         ),
+        if (pending != null) ...[
+          const SizedBox(height: 18),
+          e(
+            scale: 0.96,
+            NotionCallout(
+              emoji: '🗓️',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'Se cobró el ${Fmt.dateShort(pending)}. ',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        const TextSpan(text: 'Confirma cuándo será el próximo para que las fechas sigan exactas.'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlineAction(
+                    label: 'Confirmar próximo cobro',
+                    filled: true,
+                    onTap: () => showConfirmChargeSheet(context, ref, s, pending),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
         if (open != null) ...[
           const SizedBox(height: 18),
           e(
@@ -271,6 +304,33 @@ class _DetailBody extends ConsumerWidget {
             value: Text(next == null ? '—' : _capitalize(Fmt.dateLong(next))),
           ),
         ),
+        e(
+          PropertyRow(
+            icon: LucideIcons.waypoints,
+            label: 'Patrón',
+            value: Text(s.pattern.describe(s.cycle)),
+          ),
+        ),
+        if (s.chargeHistory.isNotEmpty)
+          e(
+            PropertyRow(
+              icon: LucideIcons.history,
+              label: 'Últimos cobros',
+              value: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  // Más recientes primero; los asumidos (sin confirmar) en gris.
+                  for (final r in s.chargeHistory.reversed.take(6))
+                    NotionTag(
+                      Fmt.dateShort(r.date),
+                      tone: r.confirmed ? TagTone.strong : TagTone.neutral,
+                      icon: r.confirmed ? LucideIcons.check : null,
+                    ),
+                ],
+              ),
+            ),
+          ),
         e(
           PropertyRow(
             icon: LucideIcons.hourglass,

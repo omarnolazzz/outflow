@@ -18,6 +18,7 @@ import '../../../../core/widgets/segmented.dart';
 import '../../../merchants/domain/entities/merchant.dart';
 import '../../../merchants/presentation/widgets/merchant_avatar.dart';
 import '../../../notifications/presentation/notification_providers.dart';
+import '../../domain/charge_pattern.dart';
 import '../../domain/entities/subscription.dart';
 import '../subscription_providers.dart';
 
@@ -107,18 +108,16 @@ class _SubscriptionFormScreenState extends ConsumerState<SubscriptionFormScreen>
       return;
     }
 
+    // La fecha elegida se convierte en el ancla del calendario de cobros,
+    // salvo al editar sin tocar fecha ni ciclo: se conserva el ancla original.
+    final keepAnchor = _e != null && !_dateTouched && _e.cycle == BillingCycle(unit: _unit, every: _every);
     final s = Subscription(
       id: _e?.id ?? const Uuid().v4(),
       merchantId: _e?.merchantId ?? widget.merchant!.id,
       name: _name.text.trim(),
       price: Money.fromMajor(amount, _currency),
       cycle: BillingCycle(unit: _unit, every: _every),
-      // La fecha elegida se convierte en el ancla del calendario de cobros,
-      // salvo al editar sin tocar fecha ni ciclo: se conserva el ancla original
-      // para no perder el historial (último cobro → ventana de cancelación).
-      firstChargeDate: _e != null && !_dateTouched && _e.cycle == BillingCycle(unit: _unit, every: _every)
-          ? _e.firstChargeDate
-          : _date,
+      firstChargeDate: keepAnchor ? _e.firstChargeDate : _date,
       category: _category,
       paymentMethod: PaymentMethod(
         kind: _payKind,
@@ -131,6 +130,12 @@ class _SubscriptionFormScreenState extends ConsumerState<SubscriptionFormScreen>
       notificationRule: _e?.notificationRule,
       notes: _notes.text.trim(),
       createdAt: _e?.createdAt ?? DateTime.now(),
+      // El historial de cobros se conserva al editar; el patrón se reajusta al
+      // día de la nueva fecha si el usuario la cambió.
+      chargeHistory: _e?.chargeHistory ?? const [],
+      chargePattern: keepAnchor
+          ? _e.chargePattern
+          : (_dateTouched ? _e?.chargePattern?.withDayOf(_date) : null) ?? ChargePattern.sameDay(_date.day),
     );
 
     await ref.read(subscriptionActionsProvider).save(s);

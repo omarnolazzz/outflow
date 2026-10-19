@@ -1,6 +1,6 @@
 # Fechas de cobro inteligentes
 
-Fecha: 2026-10-19 · Estado: borrador para aprobación
+Fecha: 2026-10-19 · Estado: aprobado por el usuario
 
 ## Intención
 Los cobros reales no siempre caen "el mismo día de cada mes". Ejemplo del
