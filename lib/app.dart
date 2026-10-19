@@ -144,10 +144,13 @@ class _LockLayer extends StatelessWidget {
       },
       child: locked
           // Navigator propio: la pantalla de bloqueo puede mostrar diálogos.
-          ? Navigator(
+          // Sin HeroController: el de MaterialApp ya lo usa el Navigator principal.
+          ? HeroControllerScope.none(
               key: const ValueKey('lock'),
-              onGenerateRoute: (_) => PageRouteBuilder<void>(
-                pageBuilder: (_, _, _) => const LockScreen(),
+              child: Navigator(
+                onGenerateRoute: (_) => PageRouteBuilder<void>(
+                  pageBuilder: (_, _, _) => const LockScreen(),
+                ),
               ),
             )
           : const SizedBox.shrink(key: ValueKey('open')),

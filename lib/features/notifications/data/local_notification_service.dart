@@ -31,8 +31,11 @@ class LocalNotificationService {
 
   bool _ready = false;
 
+  /// En web (vista previa en el navegador) no hay notificaciones locales.
+  static bool get _unsupported => kIsWeb;
+
   Future<void> init() async {
-    if (_ready) return;
+    if (_ready || _unsupported) return;
     tz_data.initializeTimeZones();
     try {
       final info = await FlutterTimezone.getLocalTimezone();
@@ -61,6 +64,7 @@ class LocalNotificationService {
 
   /// Payload de la notificación que abrió la app en frío, si la hubo.
   Future<String?> launchPayload() async {
+    if (_unsupported) return null;
     final details = await _plugin.getNotificationAppLaunchDetails();
     if (details?.didNotificationLaunchApp != true) return null;
     return details!.notificationResponse?.payload;
@@ -69,6 +73,7 @@ class LocalNotificationService {
   /// Pide permiso (Android 13+ / iOS). Llamar cuando el usuario active o
   /// cree su primer recordatorio: así entiende por qué se le pide.
   Future<bool> requestPermission() async {
+    if (_unsupported) return false;
     final android = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     if (android != null) return await android.requestNotificationsPermission() ?? false;
@@ -103,6 +108,7 @@ class LocalNotificationService {
   }
 
   Future<void> _apply(List<PlannedReminder> plan) async {
+    if (_unsupported) return;
     await init();
     await _plugin.cancelAllPendingNotifications();
 
@@ -124,6 +130,7 @@ class LocalNotificationService {
   }
 
   Future<void> showTest() async {
+    if (_unsupported) return;
     await init();
     await _plugin.show(
       id: 9999,

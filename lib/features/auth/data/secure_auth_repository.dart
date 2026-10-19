@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:isolate';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
@@ -32,7 +31,7 @@ class SecureAuthRepository implements AuthRepository {
   @override
   Future<void> setPin(String pin) async {
     final salt = _randomBytes(16);
-    final hash = await Isolate.run(() => _pbkdf2(pin, salt));
+    final hash = await _hash(pin, salt);
     await _secure.write(key: _saltKey, value: base64Encode(salt));
     await _secure.write(key: _hashKey, value: base64Encode(hash));
     await _secure.delete(key: _failsKey);
@@ -53,7 +52,7 @@ class SecureAuthRepository implements AuthRepository {
 
     final salt = base64Decode((await _secure.read(key: _saltKey))!);
     final expected = base64Decode((await _secure.read(key: _hashKey))!);
-    final actual = await Isolate.run(() => _pbkdf2(pin, salt));
+    final actual = await _hash(pin, salt);
 
     if (_constantTimeEquals(actual, expected)) {
       await _secure.delete(key: _failsKey);
@@ -83,6 +82,12 @@ class SecureAuthRepository implements AuthRepository {
     final r = Random.secure();
     return Uint8List.fromList(List.generate(n, (_) => r.nextInt(256)));
   }
+
+  /// Fuera del hilo de UI en móvil; en web (sin isolates) corre en el principal.
+  static Future<List<int>> _hash(String pin, List<int> salt) =>
+      compute(_pbkdf2Args, (pin, salt));
+
+  static List<int> _pbkdf2Args((String, List<int>) args) => _pbkdf2(args.$1, args.$2);
 
   /// PBKDF2 con un solo bloque (salida de 32 bytes = tamaño de SHA-256).
   static List<int> _pbkdf2(String pin, List<int> salt) {
@@ -115,6 +120,7 @@ class LocalBiometricAuthenticator implements BiometricAuthenticator {
 
   @override
   Future<bool> isAvailable() async {
+    if (kIsWeb) return false;
     try {
       return await _auth.isDeviceSupported() &&
           (await _auth.getAvailableBiometrics()).isNotEmpty;
