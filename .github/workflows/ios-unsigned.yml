@@ -1,0 +1,40 @@
+name: iOS IPA sin firmar
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.7
+          channel: stable
+          cache: true
+
+      - name: Dependencias
+        run: flutter pub get
+
+      - name: Tests
+        run: flutter test
+
+      - name: Compilar iOS (sin firma)
+        run: flutter build ios --release --no-codesign
+
+      - name: Empaquetar IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qr Outflow.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Outflow-ipa
+          path: Outflow.ipa
+          retention-days: 14
