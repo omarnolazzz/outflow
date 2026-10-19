@@ -36,8 +36,11 @@ abstract final class LogoPicker {
   /// recorta el centro a cuadrado y lo reduce a [size] px.
   @visibleForTesting
   static Uint8List squarePng(Uint8List bytes) {
-    final decoded = img.decodeImage(bytes);
-    if (decoded == null) throw const LogoImageException();
+    final all = img.decodeImage(bytes);
+    if (all == null) throw const LogoImageException();
+    // Un .ico (o GIF) trae varios tamaños/fotogramas: se usa solo el más grande.
+    final largest = all.frames.reduce((a, b) => a.width * a.height >= b.width * b.height ? a : b);
+    final decoded = largest.clone(noAnimation: true);
     final side = math.min(decoded.width, decoded.height);
     final square = img.copyCrop(
       decoded,

@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../../../core/domain/billing_cycle.dart';
 import '../../../../core/domain/money.dart';
 import '../../../../core/motion/app_motion.dart';
+import '../../../../core/motion/motion_widgets.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/form_controls.dart';
@@ -46,8 +47,30 @@ class _CreateMerchantScreenState extends ConsumerState<CreateMerchantScreen> {
   int? _windowDays;
 
   static const _emojis = [
-    '📱', '📺', '🎬', '🎧', '🎮', '☁️', '💻', '🤖', '📰', '📚', '🏋️', '🧘',
-    '🎓', '🛒', '📦', '🚗', '🍔', '🏠', '⚡', '💡', '💳', '🏦', '🐶', '✈️',
+    '📱',
+    '📺',
+    '🎬',
+    '🎧',
+    '🎮',
+    '☁️',
+    '💻',
+    '🤖',
+    '📰',
+    '📚',
+    '🏋️',
+    '🧘',
+    '🎓',
+    '🛒',
+    '📦',
+    '🚗',
+    '🍔',
+    '🏠',
+    '⚡',
+    '💡',
+    '💳',
+    '🏦',
+    '🐶',
+    '✈️',
   ];
 
   @override
@@ -98,9 +121,9 @@ class _CreateMerchantScreenState extends ConsumerState<CreateMerchantScreen> {
     await ref.read(merchantRepositoryProvider).saveCustom(merchant);
     if (!mounted) return;
     // Continúa directamente al formulario de la suscripción con este comercio.
-    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
-      builder: (_) => SubscriptionFormScreen.create(merchant: merchant),
-    ));
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(builder: (_) => SubscriptionFormScreen.create(merchant: merchant)),
+    );
   }
 
   @override
@@ -167,11 +190,7 @@ class _CreateMerchantScreenState extends ConsumerState<CreateMerchantScreen> {
           const SizedBox(height: 8),
           NotionSegmented<_LogoMode>(
             value: _mode,
-            options: const {
-              _LogoMode.image: 'Imagen',
-              _LogoMode.emoji: 'Emoji',
-              _LogoMode.icon: 'Icono',
-            },
+            options: const {_LogoMode.image: 'Imagen', _LogoMode.emoji: 'Emoji', _LogoMode.icon: 'Icono'},
             onChanged: (m) => setState(() => _mode = m),
           ),
           const SizedBox(height: 12),
@@ -189,10 +208,8 @@ class _CreateMerchantScreenState extends ConsumerState<CreateMerchantScreen> {
                   child: child,
                 ),
               ),
-              layoutBuilder: (current, previous) => Stack(
-                alignment: Alignment.topLeft,
-                children: [...previous, ?current],
-              ),
+              layoutBuilder: (current, previous) =>
+                  Stack(alignment: Alignment.topLeft, children: [...previous, ?current]),
               child: switch (_mode) {
                 _LogoMode.image => _imagePicker(),
                 _LogoMode.emoji => _emojiPicker(),
@@ -228,11 +245,7 @@ class _CreateMerchantScreenState extends ConsumerState<CreateMerchantScreen> {
               Expanded(
                 child: NotionSegmented<CycleUnit>(
                   value: _unit,
-                  options: const {
-                    CycleUnit.week: 'Semana',
-                    CycleUnit.month: 'Mes',
-                    CycleUnit.year: 'Año',
-                  },
+                  options: const {CycleUnit.week: 'Semana', CycleUnit.month: 'Mes', CycleUnit.year: 'Año'},
                   onChanged: (u) => setState(() => _unit = u),
                 ),
               ),
@@ -267,85 +280,85 @@ class _CreateMerchantScreenState extends ConsumerState<CreateMerchantScreen> {
   }
 
   Widget _imagePicker() => Column(
-        key: const ValueKey('image'),
-        crossAxisAlignment: CrossAxisAlignment.start,
+    key: const ValueKey('image'),
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: _SourceButton(
-                  icon: LucideIcons.images,
-                  label: 'Fotos',
-                  busy: _picking,
-                  onTap: () => _pickImage(LogoSource.photos),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _SourceButton(
-                  icon: LucideIcons.folderOpen,
-                  label: 'Archivos',
-                  busy: _picking,
-                  onTap: () => _pickImage(LogoSource.files),
-                ),
-              ),
-            ],
+          Expanded(
+            child: _SourceButton(
+              icon: LucideIcons.images,
+              label: 'Fotos',
+              busy: _picking,
+              onTap: () => _pickImage(LogoSource.photos),
+            ),
           ),
-          const SizedBox(height: 8),
-          AnimatedSwitcher(
-            duration: AppMotion.short,
-            child: Text(
-              _pickError ?? 'PNG, JPG, WebP o ICO. Se recorta en cuadrado y se guarda en la app.',
-              key: ValueKey(_pickError),
-              style: AppType.caption.copyWith(color: _pickError == null ? null : AppColors.danger),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _SourceButton(
+              icon: LucideIcons.folderOpen,
+              label: 'Archivos',
+              busy: _picking,
+              onTap: () => _pickImage(LogoSource.files),
             ),
           ),
         ],
-      );
+      ),
+      const SizedBox(height: 8),
+      AnimatedSwitcher(
+        duration: AppMotion.short,
+        child: Text(
+          _pickError ?? 'PNG, JPG, WebP o ICO. Se recorta en cuadrado y se guarda en la app.',
+          key: ValueKey(_pickError),
+          style: AppType.caption.copyWith(color: _pickError == null ? null : AppColors.danger),
+        ),
+      ),
+    ],
+  );
 
   Widget _emojiPicker() => Column(
-        key: const ValueKey('emoji'),
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final e in _emojis)
-                _LogoCell(
-                  selected: _logo == MerchantLogo.emoji(e),
-                  onTap: () => setState(() => _logo = MerchantLogo.emoji(e)),
-                  child: Text(e, style: const TextStyle(fontSize: 20)),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _emojiInput,
-            decoration: const InputDecoration(hintText: 'O escribe cualquier emoji'),
-            onChanged: (v) {
-              final c = v.characters;
-              if (c.isEmpty) return;
-              // Solo el último grafema: un emoji compuesto cuenta como uno.
-              setState(() => _logo = MerchantLogo.emoji(c.last));
-            },
-          ),
-        ],
-      );
-
-  Widget _iconPicker() => Wrap(
-        key: const ValueKey('icon'),
+    key: const ValueKey('emoji'),
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Wrap(
         spacing: 6,
         runSpacing: 6,
         children: [
-          for (final e in kLineIcons.entries)
+          for (final e in _emojis)
             _LogoCell(
-              selected: _logo == MerchantLogo.icon(e.key),
-              onTap: () => setState(() => _logo = MerchantLogo.icon(e.key)),
-              child: Icon(e.value, size: 18, color: AppColors.ink),
+              selected: _logo == MerchantLogo.emoji(e),
+              onTap: () => setState(() => _logo = MerchantLogo.emoji(e)),
+              child: Text(e, style: const TextStyle(fontSize: 20)),
             ),
         ],
-      );
+      ),
+      const SizedBox(height: 10),
+      TextField(
+        controller: _emojiInput,
+        decoration: const InputDecoration(hintText: 'O escribe cualquier emoji'),
+        onChanged: (v) {
+          final c = v.characters;
+          if (c.isEmpty) return;
+          // Solo el último grafema: un emoji compuesto cuenta como uno.
+          setState(() => _logo = MerchantLogo.emoji(c.last));
+        },
+      ),
+    ],
+  );
+
+  Widget _iconPicker() => Wrap(
+    key: const ValueKey('icon'),
+    spacing: 6,
+    runSpacing: 6,
+    children: [
+      for (final e in kLineIcons.entries)
+        _LogoCell(
+          selected: _logo == MerchantLogo.icon(e.key),
+          onTap: () => setState(() => _logo = MerchantLogo.icon(e.key)),
+          child: Icon(e.value, size: 18, color: AppColors.ink),
+        ),
+    ],
+  );
 }
 
 class _SourceButton extends StatelessWidget {
@@ -357,32 +370,32 @@ class _SourceButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Pressable(
-        onTap: busy ? null : onTap,
-        haptic: true,
-        highlight: false,
-        scale: 0.96,
-        borderRadius: BorderRadius.circular(8),
-        child: AnimatedOpacity(
-          duration: AppMotion.short,
-          opacity: busy ? 0.5 : 1,
-          child: Container(
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppColors.surfaceMuted,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 18, color: AppColors.ink),
-                const SizedBox(width: 8),
-                Text(label, style: AppType.body.copyWith(fontWeight: FontWeight.w500)),
-              ],
-            ),
-          ),
+    onTap: busy ? null : onTap,
+    haptic: true,
+    highlight: false,
+    scale: 0.96,
+    borderRadius: BorderRadius.circular(8),
+    child: AnimatedOpacity(
+      duration: AppMotion.short,
+      opacity: busy ? 0.5 : 1,
+      child: Container(
+        height: 48,
+        decoration: BoxDecoration(
+          color: AppColors.surfaceMuted,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.border),
         ),
-      );
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 18, color: AppColors.ink),
+            const SizedBox(width: 8),
+            Text(label, style: AppType.body.copyWith(fontWeight: FontWeight.w500)),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _LogoCell extends StatelessWidget {
@@ -393,21 +406,25 @@ class _LogoCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Pressable(
-        onTap: onTap,
-        haptic: true,
-        highlight: false,
-        scale: 0.9,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          width: 42,
-          height: 42,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected ? AppColors.callout : AppColors.background,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: selected ? AppColors.ink : AppColors.border, width: selected ? 1.5 : 1),
-          ),
-          child: child,
+    onTap: onTap,
+    haptic: true,
+    highlight: false,
+    scale: 0.9,
+    child: SelectionPop(
+      active: selected,
+      amount: 0.12,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        width: 42,
+        height: 42,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? AppColors.callout : AppColors.background,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: selected ? AppColors.ink : AppColors.border, width: selected ? 1.5 : 1),
         ),
-      );
+        child: child,
+      ),
+    ),
+  );
 }

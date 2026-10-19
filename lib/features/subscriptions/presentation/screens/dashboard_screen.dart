@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../../core/di/core_providers.dart';
 import '../../../../core/motion/app_motion.dart';
+import '../../../../core/motion/motion_widgets.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/utils/formatters.dart';
@@ -47,23 +48,35 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   /// El título grande ocupa ~100px; cuando sale de pantalla aparece el de la barra.
   static const _titleScrollExtent = 96.0;
 
+  /// En la revelación (al desbloquear) las filas esperan a que entre la cabecera;
+  /// al cambiar de pestaña entran sin espera.
+  bool _wasRevealed = false;
+  DateTime? _revealedAt;
+
+  Duration get _rowsDelay {
+    final at = _revealedAt;
+    final revealing = at != null && DateTime.now().difference(at) < const Duration(milliseconds: 700);
+    return revealing ? const Duration(milliseconds: 380) : Duration.zero;
+  }
+
   @override
   void dispose() {
     _scroll.dispose();
     super.dispose();
   }
 
-  void _openDetail(Subscription s) => Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => SubscriptionDetailScreen(subscriptionId: s.id)),
-      );
+  void _openDetail(Subscription s, {bool fromList = false}) => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => SubscriptionDetailScreen(subscriptionId: s.id, heroLogo: fromList),
+    ),
+  );
 
-  void _openCatalog() => Navigator.of(context).push(
-        MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => const CatalogScreen()),
-      );
+  void _openCatalog() =>
+      Navigator.of(context)
+          .push(MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => const CatalogScreen()));
 
-  void _openSettings() => Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
-      );
+  void _openSettings() =>
+      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
 
   @override
   Widget build(BuildContext context) {
@@ -71,6 +84,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final merchants = ref.watch(merchantIndexProvider);
     final now = ref.watch(nowProvider);
     final topInset = MediaQuery.paddingOf(context).top;
+    final revealed = EntranceGate.isOpen(context);
+    if (revealed && !_wasRevealed) _revealedAt = DateTime.now();
+    _wasRevealed = revealed;
 
     return Scaffold(
       body: Stack(
@@ -115,15 +131,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           child: _PageHeader(summary: summary, now: now, topInset: topInset),
         ),
         if (isEmpty)
-          SliverToBoxAdapter(child: _EmptyState(onAdd: _openCatalog))
+          SliverToBoxAdapter(
+            child: Entrance(index: 6, child: _EmptyState(onAdd: _openCatalog)),
+          )
         else ...[
           if (summary.upcoming.isNotEmpty) ...[
             SliverToBoxAdapter(
-              child: SectionLabel(
-                summary.upcoming.any((i) => i.urgency != Urgency.later)
-                    ? 'Requiere atención'
-                    : 'Próximos cobros',
-                trailing: Text('${summary.upcoming.length}', style: AppType.caption),
+              child: Entrance(
+                index: 6,
+                child: SectionLabel(
+                  summary.upcoming.any((i) => i.urgency != Urgency.later)
+                      ? 'Requiere atención'
+                      : 'Próximos cobros',
+                  trailing: Text('${summary.upcoming.length}', style: AppType.caption),
+                ),
               ),
             ),
             SliverToBoxAdapter(
@@ -135,14 +156,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ),
           ],
           SliverToBoxAdapter(
-            child: _ViewTabs(
-              current: _view,
-              counts: {
-                SubscriptionStatus.active: summary.billingCount,
-                SubscriptionStatus.paused: summary.byStatus[SubscriptionStatus.paused]!.length,
-                SubscriptionStatus.cancelled: summary.byStatus[SubscriptionStatus.cancelled]!.length,
-              },
-              onChanged: (v) => setState(() => _view = v),
+            child: Entrance(
+              index: 8,
+              child: _ViewTabs(
+                current: _view,
+                counts: {
+                  SubscriptionStatus.active: summary.billingCount,
+                  SubscriptionStatus.paused: summary.byStatus[SubscriptionStatus.paused]!.length,
+                  SubscriptionStatus.cancelled: summary.byStatus[SubscriptionStatus.cancelled]!.length,
+                },
+                onChanged: (v) => setState(() => _view = v),
+              ),
             ),
           ),
           SliverToBoxAdapter(
@@ -150,33 +174,29 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               duration: AppMotion.short,
               switchInCurve: AppMotion.ease,
               switchOutCurve: AppMotion.ease,
-              layoutBuilder: (current, previous) => Stack(
-                alignment: Alignment.topCenter,
-                children: [...previous, ?current],
-              ),
+              layoutBuilder: (current, previous) =>
+                  Stack(alignment: Alignment.topCenter, children: [...previous, ?current]),
               child: Column(
                 key: ValueKey(_view),
                 children: [
                   if (list.isEmpty)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-                      child: Text(
-                        switch (_view) {
-                          SubscriptionStatus.paused => 'Nada en pausa.',
-                          SubscriptionStatus.cancelled => 'Aún no has cancelado nada.',
-                          _ => 'No hay suscripciones activas.',
-                        },
-                        style: AppType.body.copyWith(color: AppColors.inkTertiary),
-                      ),
+                      child: Text(switch (_view) {
+                        SubscriptionStatus.paused => 'Nada en pausa.',
+                        SubscriptionStatus.cancelled => 'Aún no has cancelado nada.',
+                        _ => 'No hay suscripciones activas.',
+                      }, style: AppType.body.copyWith(color: AppColors.inkTertiary)),
                     ),
                   for (var i = 0; i < list.length; i++) ...[
-                    _Entrance(
+                    Entrance(
                       index: i,
+                      delay: _rowsDelay,
                       child: SubscriptionTile(
                         subscription: list[i],
                         merchant: merchants[list[i].merchantId],
                         now: now,
-                        onTap: () => _openDetail(list[i]),
+                        onTap: () => _openDetail(list[i], fromList: true),
                       ),
                     ),
                     if (i < list.length - 1) const Divider(indent: 68, endIndent: 20),
@@ -185,7 +205,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
             ),
           ),
-          SliverToBoxAdapter(child: _NewRow(onTap: _openCatalog)),
+          SliverToBoxAdapter(
+            child: Entrance(
+              delay: _rowsDelay,
+              index: list.length,
+              child: _NewRow(onTap: _openCatalog),
+            ),
+          ),
         ],
         SliverToBoxAdapter(child: SizedBox(height: MediaQuery.paddingOf(context).bottom + 32)),
       ],
@@ -211,41 +237,52 @@ class _PageHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const OutflowMark(size: 44),
+          const Entrance(scale: 0.7, offset: Offset.zero, child: OutflowMark(size: 44)),
           const SizedBox(height: 16),
-          Text('Suscripciones', style: AppType.display),
+          Entrance(index: 1, child: Text('Suscripciones', style: AppType.display)),
           const SizedBox(height: 12),
-          PropertyRow(
-            icon: LucideIcons.wallet,
-            label: 'Gasto mensual',
-            value: Wrap(
-              spacing: 6,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Text(primary == null ? '—' : Fmt.money(primary), style: AppType.amount),
-                if (others > 0)
-                  Text('+ $others ${others == 1 ? 'moneda' : 'monedas'}', style: AppType.caption),
-              ],
+          Entrance(
+            index: 2,
+            child: PropertyRow(
+              icon: LucideIcons.wallet,
+              label: 'Gasto mensual',
+              value: Wrap(
+                spacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  primary == null
+                      ? Text('—', style: AppType.amount)
+                      : CountUp.money(primary, style: AppType.amount),
+                  if (others > 0)
+                    Text('+ $others ${others == 1 ? 'moneda' : 'monedas'}', style: AppType.caption),
+                ],
+              ),
             ),
           ),
-          PropertyRow(
-            icon: LucideIcons.circleCheck,
-            label: 'Activas',
-            value: Text('${summary.billingCount}', style: AppType.amount),
+          Entrance(
+            index: 3,
+            child: PropertyRow(
+              icon: LucideIcons.circleCheck,
+              label: 'Activas',
+              value: CountUp.integer(summary.billingCount, style: AppType.amount),
+            ),
           ),
-          PropertyRow(
-            icon: LucideIcons.calendarClock,
-            label: 'Próximo cobro',
-            value: Text(
-              nextCharge == null
-                  ? 'Sin cobros en 30 días'
-                  : '${nextCharge.subscription.name} · ${Fmt.relativeDays(nextCharge.daysLeft)}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+          Entrance(
+            index: 4,
+            child: PropertyRow(
+              icon: LucideIcons.calendarClock,
+              label: 'Próximo cobro',
+              value: Text(
+                nextCharge == null
+                    ? 'Sin cobros en 30 días'
+                    : '${nextCharge.subscription.name} · ${Fmt.relativeDays(nextCharge.daysLeft)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
           const SizedBox(height: 4),
-          const Divider(),
+          const Entrance(index: 5, offset: Offset.zero, child: Divider()),
         ],
       ),
     );
@@ -278,45 +315,47 @@ class _ViewTabs extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             clipBehavior: Clip.none,
             child: Row(
-            children: [
-              for (final e in _labels.entries)
-                Pressable(
-                  onTap: () => onChanged(e.key),
-                  haptic: true,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            AnimatedDefaultTextStyle(
-                              duration: AppMotion.short,
-                              // Fusiona con el estilo heredado para conservar la familia del tema.
-                              style: DefaultTextStyle.of(context).style.merge(AppType.bodyStrong.copyWith(
-                                color: e.key == current ? AppColors.ink : AppColors.inkTertiary,
-                              )),
-                              child: Text(e.value),
-                            ),
-                            const SizedBox(width: 4),
-                            Text('${counts[e.key] ?? 0}', style: AppType.caption),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        // Subrayado que aparece en la vista activa.
-                        AnimatedContainer(
-                          duration: AppMotion.medium,
-                          curve: AppMotion.ease,
-                          height: 2,
-                          width: e.key == current ? 24 : 0,
-                          color: AppColors.ink,
-                        ),
-                      ],
+              children: [
+                for (final e in _labels.entries)
+                  Pressable(
+                    onTap: () => onChanged(e.key),
+                    haptic: true,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              AnimatedDefaultTextStyle(
+                                duration: AppMotion.short,
+                                // Fusiona con el estilo heredado para conservar la familia del tema.
+                                style: DefaultTextStyle.of(context).style.merge(
+                                  AppType.bodyStrong.copyWith(
+                                    color: e.key == current ? AppColors.ink : AppColors.inkTertiary,
+                                  ),
+                                ),
+                                child: Text(e.value),
+                              ),
+                              const SizedBox(width: 4),
+                              Text('${counts[e.key] ?? 0}', style: AppType.caption),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          // Subrayado que aparece en la vista activa.
+                          AnimatedContainer(
+                            duration: AppMotion.medium,
+                            curve: AppMotion.ease,
+                            height: 2,
+                            width: e.key == current ? 24 : 0,
+                            color: AppColors.ink,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-            ],
-          ),
+              ],
+            ),
           ),
           const Divider(),
         ],
@@ -332,21 +371,21 @@ class _NewRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-        child: Pressable(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-            child: Row(
-              children: [
-                const Icon(LucideIcons.plus, size: 18, color: AppColors.inkTertiary),
-                const SizedBox(width: 10),
-                Text('Nueva suscripción', style: AppType.body.copyWith(color: AppColors.inkTertiary)),
-              ],
-            ),
-          ),
+    padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+    child: Pressable(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        child: Row(
+          children: [
+            const Icon(LucideIcons.plus, size: 18, color: AppColors.inkTertiary),
+            const SizedBox(width: 10),
+            Text('Nueva suscripción', style: AppType.body.copyWith(color: AppColors.inkTertiary)),
+          ],
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class _EmptyState extends StatelessWidget {
@@ -355,23 +394,23 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            NotionCallout(
-              emoji: '💡',
-              child: Text(
-                'Registra tus suscripciones y Outflow te avisará antes de cada cobro, '
-                'y antes de que cierre el plazo para cancelar.',
-                style: AppType.body,
-              ),
-            ),
-            const SizedBox(height: 16),
-            OutlineAction(label: 'Agregar la primera', icon: LucideIcons.plus, filled: true, onTap: onAdd),
-          ],
+    padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        NotionCallout(
+          emoji: '💡',
+          child: Text(
+            'Registra tus suscripciones y Outflow te avisará antes de cada cobro, '
+            'y antes de que cierre el plazo para cancelar.',
+            style: AppType.body,
+          ),
         ),
-      );
+        const SizedBox(height: 16),
+        OutlineAction(label: 'Agregar la primera', icon: LucideIcons.plus, filled: true, onTap: onAdd),
+      ],
+    ),
+  );
 }
 
 /// Barra superior flotante y translúcida (material de Apple):
@@ -410,9 +449,7 @@ class _FloatingBar extends StatelessWidget {
           final bar = Container(
             padding: EdgeInsets.fromLTRB(12, top + 6, 12, 6),
             decoration: BoxDecoration(
-              color: AppColors.background.withValues(
-                alpha: reduceTransparency ? material : 0.72 * material,
-              ),
+              color: AppColors.background.withValues(alpha: reduceTransparency ? material : 0.72 * material),
               border: Border(
                 bottom: BorderSide(color: AppColors.border.withValues(alpha: material)),
               ),
@@ -455,37 +492,9 @@ class _BarButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Pressable(
-        onTap: onTap,
-        scale: 0.9,
-        semanticLabel: label,
-        child: SizedBox(
-          width: 40,
-          height: 40,
-          child: Icon(icon, size: 20, color: AppColors.ink),
-        ),
-      );
-}
-
-/// Entrada escalonada sutil de las filas (8px + fundido). Solo la primera vez
-/// que se construye cada fila; con "reducir movimiento" no hay desplazamiento.
-class _Entrance extends StatelessWidget {
-  const _Entrance({required this.index, required this.child});
-  final int index;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    if (AppMotion.reduced(context) || index > 12) return child;
-    final delay = index * 0.04;
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: Duration(milliseconds: 320 + (delay * 1000).round()),
-      curve: Interval(delay / (0.32 + delay), 1, curve: AppMotion.ease),
-      builder: (context, t, child) => Opacity(
-        opacity: t,
-        child: Transform.translate(offset: Offset(0, 8 * (1 - t)), child: child),
-      ),
-      child: child,
-    );
-  }
+    onTap: onTap,
+    scale: 0.9,
+    semanticLabel: label,
+    child: SizedBox(width: 40, height: 40, child: Icon(icon, size: 20, color: AppColors.ink)),
+  );
 }

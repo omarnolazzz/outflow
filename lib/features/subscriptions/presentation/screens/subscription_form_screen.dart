@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../../../core/domain/billing_cycle.dart';
 import '../../../../core/domain/money.dart';
 import '../../../../core/motion/app_motion.dart';
+import '../../../../core/motion/motion_widgets.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/utils/formatters.dart';
@@ -26,7 +27,7 @@ class SubscriptionFormScreen extends ConsumerStatefulWidget {
   const SubscriptionFormScreen.create({super.key, required Merchant this.merchant}) : existing = null;
 
   const SubscriptionFormScreen.edit({super.key, required Subscription subscription, this.merchant})
-      : existing = subscription;
+    : existing = subscription;
 
   final Merchant? merchant;
   final Subscription? existing;
@@ -41,9 +42,7 @@ class _SubscriptionFormScreenState extends ConsumerState<SubscriptionFormScreen>
 
   late final _name = TextEditingController(text: _e?.name ?? widget.merchant?.name ?? '');
   late final _amount = TextEditingController(
-    text: _e != null
-        ? _e.price.major.toStringAsFixed(2)
-        : _defaults.price?.major.toStringAsFixed(2) ?? '',
+    text: _e != null ? _e.price.major.toStringAsFixed(2) : _defaults.price?.major.toStringAsFixed(2) ?? '',
   );
   late final _payLabel = TextEditingController(text: _e?.paymentMethod.label ?? '');
   late final _last4 = TextEditingController(text: _e?.paymentMethod.last4 ?? '');
@@ -151,6 +150,10 @@ class _SubscriptionFormScreenState extends ConsumerState<SubscriptionFormScreen>
   Widget build(BuildContext context) {
     final logo = widget.merchant?.logo ?? const MerchantLogo.monogram();
 
+    // Los bloques del formulario entran de arriba abajo, uno tras otro.
+    var order = 0;
+    Widget e(Widget child) => Entrance(index: ++order, child: child);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(_e == null ? 'Detalles' : 'Editar'),
@@ -172,7 +175,12 @@ class _SubscriptionFormScreenState extends ConsumerState<SubscriptionFormScreen>
         children: [
           Row(
             children: [
-              MerchantAvatar(logo: logo, name: _name.text, size: 48),
+              Entrance(
+                scale: 0.6,
+                offset: Offset.zero,
+                curve: Curves.easeOutBack,
+                child: MerchantAvatar(logo: logo, name: _name.text, size: 48),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: TextField(
@@ -193,186 +201,217 @@ class _SubscriptionFormScreenState extends ConsumerState<SubscriptionFormScreen>
             ],
           ),
           const SizedBox(height: 20),
-          const FieldLabel('Monto'),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _amount,
-                  autofocus: _e == null && _amount.text.isEmpty,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
-                  style: AppType.amount.copyWith(fontSize: 17),
-                  // Validación en línea, no solo al guardar.
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(hintText: '0.00', errorText: _amountError),
+          e(const FieldLabel('Monto')),
+          e(
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _amount,
+                    autofocus: _e == null && _amount.text.isEmpty,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+                    style: AppType.amount.copyWith(fontSize: 17),
+                    // Validación en línea, no solo al guardar.
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(hintText: '0.00', errorText: _amountError),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              CurrencyMenu(value: _currency, onChanged: (c) => setState(() => _currency = c)),
-            ],
+                const SizedBox(width: 8),
+                CurrencyMenu(value: _currency, onChanged: (c) => setState(() => _currency = c)),
+              ],
+            ),
           ),
           const SizedBox(height: 20),
-          const FieldLabel('Se cobra'),
-          Row(
-            children: [
-              Text('Cada', style: AppType.body),
-              const SizedBox(width: 10),
-              CountStepper(value: _every, onChanged: (v) => setState(() => _every = v)),
-              const SizedBox(width: 10),
-              Expanded(
-                child: NotionSegmented<CycleUnit>(
-                  value: _unit,
-                  options: const {
-                    CycleUnit.week: 'Semana',
-                    CycleUnit.month: 'Mes',
-                    CycleUnit.year: 'Año',
-                  },
-                  onChanged: (u) => setState(() => _unit = u),
+          e(const FieldLabel('Se cobra')),
+          e(
+            Row(
+              children: [
+                Text('Cada', style: AppType.body),
+                const SizedBox(width: 10),
+                CountStepper(value: _every, onChanged: (v) => setState(() => _every = v)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: NotionSegmented<CycleUnit>(
+                    value: _unit,
+                    options: const {CycleUnit.week: 'Semana', CycleUnit.month: 'Mes', CycleUnit.year: 'Año'},
+                    onChanged: (u) => setState(() => _unit = u),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 10),
-          Pressable(
-            onTap: _pickDate,
-            child: NotionBlock(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              color: AppColors.surfaceMuted,
+          e(
+            Pressable(
+              onTap: _pickDate,
+              child: NotionBlock(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                color: AppColors.surfaceMuted,
+                child: Row(
+                  children: [
+                    const Icon(LucideIcons.calendar, size: 16, color: AppColors.inkTertiary),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text('Próximo cobro', style: AppType.body)),
+                    // La fecha nueva entra con un fundido al elegirla.
+                    AnimatedSwitcher(
+                      duration: AppMotion.short,
+                      child: Text(Fmt.dateShort(_date), key: ValueKey(_date), style: AppType.bodyStrong),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          e(const FieldLabel('Estado')),
+          e(
+            NotionSegmented<SubscriptionStatus>(
+              value: _status,
+              options: const {
+                SubscriptionStatus.active: 'Activa',
+                SubscriptionStatus.trial: 'Prueba',
+                SubscriptionStatus.paused: 'Pausada',
+              },
+              onChanged: (s) => setState(() => _status = s),
+            ),
+          ),
+          const SizedBox(height: 20),
+          e(const FieldLabel('Método de pago')),
+          e(
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final k in PaymentKind.values)
+                  ChoiceTag(
+                    label: k.label,
+                    selected: k == _payKind,
+                    onTap: () => setState(() => _payKind = k),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          // El campo "Últimos 4" aparece/desaparece deslizándose.
+          e(
+            AnimatedSize(
+              duration: AppMotion.medium,
+              curve: AppMotion.ease,
               child: Row(
                 children: [
-                  const Icon(LucideIcons.calendar, size: 16, color: AppColors.inkTertiary),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text('Próximo cobro', style: AppType.body)),
-                  Text(Fmt.dateShort(_date), style: AppType.bodyStrong),
+                  Expanded(
+                    flex: 3,
+                    child: TextField(
+                      controller: _payLabel,
+                      decoration: const InputDecoration(hintText: 'Banco o alias (opcional)'),
+                    ),
+                  ),
+                  if (_payKind == PaymentKind.card) ...[
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 2,
+                      child: TextField(
+                        controller: _last4,
+                        keyboardType: TextInputType.number,
+                        maxLength: 4,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        decoration: const InputDecoration(hintText: 'Últimos 4', counterText: ''),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
           ),
           const SizedBox(height: 20),
-          const FieldLabel('Estado'),
-          NotionSegmented<SubscriptionStatus>(
-            value: _status,
-            options: const {
-              SubscriptionStatus.active: 'Activa',
-              SubscriptionStatus.trial: 'Prueba',
-              SubscriptionStatus.paused: 'Pausada',
-            },
-            onChanged: (s) => setState(() => _status = s),
-          ),
-          const SizedBox(height: 20),
-          const FieldLabel('Método de pago'),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final k in PaymentKind.values)
-                ChoiceTag(label: k.label, selected: k == _payKind, onTap: () => setState(() => _payKind = k)),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                flex: 3,
-                child: TextField(
-                  controller: _payLabel,
-                  decoration: const InputDecoration(hintText: 'Banco o alias (opcional)'),
-                ),
-              ),
-              if (_payKind == PaymentKind.card) ...[
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 2,
-                  child: TextField(
-                    controller: _last4,
-                    keyboardType: TextInputType.number,
-                    maxLength: 4,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: const InputDecoration(hintText: 'Últimos 4', counterText: ''),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 20),
-          const FieldLabel('Categoría'),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final c in SpendCategory.values)
-                ChoiceTag(label: c.label, selected: c == _category, onTap: () => setState(() => _category = c)),
-            ],
-          ),
-          const SizedBox(height: 20),
-          NotionBlock(
-            padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          e(const FieldLabel('Categoría')),
+          e(
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
               children: [
-                Row(
-                  children: [
-                    const Icon(LucideIcons.hourglass, size: 16, color: AppColors.inkTertiary),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text('Ventana de cancelación', style: AppType.bodyStrong)),
-                    Switch.adaptive(value: _hasWindow, onChanged: (v) => setState(() => _hasWindow = v)),
-                  ],
-                ),
-                AnimatedSize(
-                  duration: AppMotion.medium,
-                  curve: AppMotion.ease,
-                  alignment: Alignment.topCenter,
-                  child: !_hasWindow
-                      ? const SizedBox(width: double.infinity)
-                      : Padding(
-                          padding: const EdgeInsets.fromLTRB(0, 4, 8, 12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              NotionSegmented<CancellationPolicy>(
-                                value: _policy,
-                                options: const {
-                                  CancellationPolicy.afterCharge: 'Después del cobro',
-                                  CancellationPolicy.beforeCharge: 'Antes del cobro',
-                                },
-                                onChanged: (p) => setState(() => _policy = p),
-                              ),
-                              const SizedBox(height: 10),
-                              Row(
-                                children: [
-                                  CountStepper(
-                                    value: _windowDays,
-                                    min: 0,
-                                    max: 90,
-                                    onChanged: (v) => setState(() => _windowDays = v),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      _policy == CancellationPolicy.afterCharge
-                                          ? 'días para cancelar y pedir reembolso tras el cobro'
-                                          : 'días de antelación que exige el comercio',
-                                      style: AppType.caption,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                ),
+                for (final c in SpendCategory.values)
+                  ChoiceTag(
+                    label: c.label,
+                    selected: c == _category,
+                    onTap: () => setState(() => _category = c),
+                  ),
               ],
             ),
           ),
           const SizedBox(height: 20),
-          const FieldLabel('Notas'),
-          TextField(
-            controller: _notes,
-            minLines: 2,
-            maxLines: 5,
-            decoration: const InputDecoration(hintText: 'Cómo cancelar, cuenta asociada…'),
+          e(
+            NotionBlock(
+              padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(LucideIcons.hourglass, size: 16, color: AppColors.inkTertiary),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text('Ventana de cancelación', style: AppType.bodyStrong)),
+                      Switch.adaptive(value: _hasWindow, onChanged: (v) => setState(() => _hasWindow = v)),
+                    ],
+                  ),
+                  AnimatedSize(
+                    duration: AppMotion.medium,
+                    curve: AppMotion.ease,
+                    alignment: Alignment.topCenter,
+                    child: !_hasWindow
+                        ? const SizedBox(width: double.infinity)
+                        : Padding(
+                            padding: const EdgeInsets.fromLTRB(0, 4, 8, 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                NotionSegmented<CancellationPolicy>(
+                                  value: _policy,
+                                  options: const {
+                                    CancellationPolicy.afterCharge: 'Después del cobro',
+                                    CancellationPolicy.beforeCharge: 'Antes del cobro',
+                                  },
+                                  onChanged: (p) => setState(() => _policy = p),
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    CountStepper(
+                                      value: _windowDays,
+                                      min: 0,
+                                      max: 90,
+                                      onChanged: (v) => setState(() => _windowDays = v),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        _policy == CancellationPolicy.afterCharge
+                                            ? 'días para cancelar y pedir reembolso tras el cobro'
+                                            : 'días de antelación que exige el comercio',
+                                        style: AppType.caption,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          e(const FieldLabel('Notas')),
+          e(
+            TextField(
+              controller: _notes,
+              minLines: 2,
+              maxLines: 5,
+              decoration: const InputDecoration(hintText: 'Cómo cancelar, cuenta asociada…'),
+            ),
           ),
         ],
       ),

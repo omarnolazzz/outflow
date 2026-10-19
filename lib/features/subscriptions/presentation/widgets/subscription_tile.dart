@@ -9,6 +9,9 @@ import '../../../merchants/domain/entities/merchant.dart';
 import '../../../merchants/presentation/widgets/merchant_avatar.dart';
 import '../../domain/entities/subscription.dart';
 
+/// Tag compartido por la fila y el detalle para que el logo "viaje" entre ambos.
+Object subscriptionLogoHeroTag(String subscriptionId) => 'logo-$subscriptionId';
+
 /// Fila de "base de datos" Notion: icono · nombre/meta · monto/fecha.
 class SubscriptionTile extends StatelessWidget {
   const SubscriptionTile({
@@ -49,7 +52,12 @@ class SubscriptionTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           child: Row(
             children: [
-              MerchantAvatar(logo: merchant?.logo ?? const MerchantLogo.monogram(), name: s.name),
+              MerchantAvatar(
+                logo: merchant?.logo ?? const MerchantLogo.monogram(),
+                name: s.name,
+                // Vuela hasta la cabecera del detalle.
+                heroTag: subscriptionLogoHeroTag(s.id),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

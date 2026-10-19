@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../../core/motion/app_motion.dart';
+import '../../../../core/motion/motion_widgets.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/utils/formatters.dart';
@@ -63,7 +64,7 @@ class _UpcomingCarouselState extends State<UpcomingCarousel> {
           },
           itemBuilder: (context, i) {
             final item = widget.items[i];
-            return Padding(
+            final card = Padding(
               padding: const EdgeInsets.only(right: 12),
               child: _UpcomingCard(
                 item: item,
@@ -71,9 +72,46 @@ class _UpcomingCarouselState extends State<UpcomingCarousel> {
                 onTap: () => widget.onOpen(item),
               ),
             );
+            return Entrance(
+              index: i,
+              delay: const Duration(milliseconds: 260),
+              step: const Duration(milliseconds: 70),
+              offset: const Offset(48, 0),
+              child: _DepthOnScroll(controller: _controller, index: i, child: card),
+            );
           },
         ),
       ),
+    );
+  }
+}
+
+/// Profundidad ligada 1:1 al deslizamiento: la tarjeta en foco a tamaño
+/// completo y las vecinas un poco más pequeñas y tenues. Solo escala y
+/// opacidad: no provoca relayout.
+class _DepthOnScroll extends StatelessWidget {
+  const _DepthOnScroll({required this.controller, required this.index, required this.child});
+  final PageController controller;
+  final int index;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (AppMotion.reduced(context)) return child;
+    return AnimatedBuilder(
+      animation: controller,
+      child: child,
+      builder: (context, child) {
+        final page = controller.hasClients && controller.position.haveDimensions
+            ? controller.page ?? 0
+            : 0.0;
+        final d = (page - index).abs().clamp(0.0, 1.0);
+        return Transform.scale(
+          scale: 1 - 0.05 * d,
+          alignment: Alignment.centerLeft,
+          child: Opacity(opacity: 1 - 0.35 * d, child: child),
+        );
+      },
     );
   }
 }
@@ -163,9 +201,10 @@ class _CycleProgress extends StatelessWidget {
       child: SizedBox(
         height: 2,
         child: TweenAnimationBuilder<double>(
-          tween: Tween(begin: 0, end: value),
-          duration: AppMotion.reduced(context) ? Duration.zero : const Duration(milliseconds: 600),
-          curve: AppMotion.ease,
+          // Se rellena cuando el contenido se revela (no bajo la pantalla de bloqueo).
+          tween: Tween(begin: 0, end: EntranceGate.isOpen(context) ? value : 0),
+          duration: AppMotion.reduced(context) ? Duration.zero : const Duration(milliseconds: 900),
+          curve: Curves.easeOutCubic,
           builder: (context, v, _) => LinearProgressIndicator(
             value: v,
             minHeight: 2,

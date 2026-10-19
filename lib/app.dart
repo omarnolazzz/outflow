@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/di/core_providers.dart';
 import 'core/motion/app_motion.dart';
+import 'core/motion/motion_widgets.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'core/widgets/outflow_mark.dart';
@@ -111,7 +112,11 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
           // El contenido queda inerte e invisible para lectores de pantalla mientras está bloqueado.
           ExcludeSemantics(
             excluding: locked,
-            child: IgnorePointer(ignoring: locked, child: child),
+            child: IgnorePointer(
+              ignoring: locked,
+              // Las entradas esperan al desbloqueo para revelarse a la vista.
+              child: EntranceGate(open: !locked, child: child!),
+            ),
           ),
           _LockLayer(locked: locked),
           if (_obscured && !locked) const _PrivacyCover(),

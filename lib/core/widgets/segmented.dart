@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../motion/app_motion.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_typography.dart';
+import 'pressable.dart';
 
 /// Control segmentado monocromo: el indicador se desliza al segmento elegido.
 class NotionSegmented<T> extends StatelessWidget {
@@ -37,8 +38,9 @@ class NotionSegmented<T> extends StatelessWidget {
           return Stack(
             children: [
               AnimatedPositioned(
-                duration: AppMotion.reduced(context) ? Duration.zero : AppMotion.medium,
-                curve: AppMotion.ease,
+                duration: AppMotion.reduced(context) ? Duration.zero : const Duration(milliseconds: 360),
+                // Llega con un leve sobrepaso, como el control segmentado de iOS.
+                curve: const Cubic(0.3, 1.25, 0.5, 1),
                 left: w * index,
                 top: 0,
                 bottom: 0,
@@ -58,22 +60,22 @@ class NotionSegmented<T> extends StatelessWidget {
                       child: Semantics(
                         selected: k == value,
                         button: true,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
+                        child: Pressable(
+                          highlight: false,
+                          scale: 0.92,
                           onTap: () {
                             if (k == value) return;
                             HapticFeedback.selectionClick();
                             onChanged(k);
                           },
                           child: Center(
-                            child: Text(
-                              options[k]!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppType.caption.copyWith(
-                                fontWeight: FontWeight.w500,
-                                color: k == value ? AppColors.ink : AppColors.inkSecondary,
-                              ),
+                            child: AnimatedDefaultTextStyle(
+                              duration: AppMotion.short,
+                              style: DefaultTextStyle.of(context).style.merge(AppType.caption.copyWith(
+                                    fontWeight: FontWeight.w500,
+                                    color: k == value ? AppColors.ink : AppColors.inkSecondary,
+                                  )),
+                              child: Text(options[k]!, maxLines: 1, overflow: TextOverflow.ellipsis),
                             ),
                           ),
                         ),

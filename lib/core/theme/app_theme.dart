@@ -76,10 +76,10 @@ abstract final class AppTheme {
         backgroundColor: AppColors.background,
         elevation: 0,
       ),
-      pageTransitionsTheme: const PageTransitionsTheme(
+      pageTransitionsTheme: PageTransitionsTheme(
+        // Todas las plataformas: la vista previa web (Windows) se mueve igual que el iPhone.
         builders: {
-          TargetPlatform.android: AdaptivePageTransitionsBuilder(),
-          TargetPlatform.iOS: AdaptivePageTransitionsBuilder(),
+          for (final p in TargetPlatform.values) p: const AdaptivePageTransitionsBuilder(),
         },
       ),
     );

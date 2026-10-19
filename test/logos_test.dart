@@ -38,6 +38,13 @@ void main() {
       expect(process(img.encodeIco(icon)).width, 48);
     });
 
+    test('un .ico con varios tamaños usa el más grande', () {
+      final small = img.Image(width: 16, height: 16);
+      final large = img.Image(width: 64, height: 64);
+      final ico = img.IcoEncoder().encodeImages([small, large]);
+      expect(process(ico).width, 64);
+    });
+
     test('rechaza datos que no son imagen', () {
       expect(
         () => LogoPicker.squarePng(Uint8List.fromList([1, 2, 3, 4])),

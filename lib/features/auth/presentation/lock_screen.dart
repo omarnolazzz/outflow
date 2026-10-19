@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/motion/app_motion.dart';
+import '../../../core/motion/motion_widgets.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/outflow_mark.dart';
@@ -189,29 +191,51 @@ class _LockScreenState extends ConsumerState<LockScreen> with SingleTickerProvid
             : Column(
                 children: [
                   const Spacer(flex: 3),
-                  const OutflowMark(size: 56),
+                  const Entrance(
+                    scale: 0.5,
+                    offset: Offset.zero,
+                    duration: Duration(milliseconds: 650),
+                    curve: Curves.easeOutBack,
+                    child: OutflowMark(size: 56),
+                  ),
                   const SizedBox(height: 20),
-                  AnimatedSwitcher(
-                    duration: AppMotion.short,
-                    child: Column(
-                      key: ValueKey(_step),
-                      children: [
-                        Text(title, style: AppType.title),
-                        const SizedBox(height: 6),
-                        Text(subtitle, style: AppType.caption, textAlign: TextAlign.center),
-                      ],
+                  Entrance(
+                    index: 2,
+                    child: AnimatedSwitcher(
+                      duration: AppMotion.medium,
+                      switchInCurve: AppMotion.ease,
+                      switchOutCurve: AppMotion.ease,
+                      // Paso a paso (crear → confirmar): el texto nuevo sube, el viejo se va.
+                      transitionBuilder: (child, a) => FadeTransition(
+                        opacity: a,
+                        child: SlideTransition(
+                          position: Tween(begin: const Offset(0, 0.25), end: Offset.zero).animate(a),
+                          child: child,
+                        ),
+                      ),
+                      child: Column(
+                        key: ValueKey(_step),
+                        children: [
+                          Text(title, style: AppType.title),
+                          const SizedBox(height: 6),
+                          Text(subtitle, style: AppType.caption, textAlign: TextAlign.center),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 32),
-                  AnimatedBuilder(
-                    animation: _shake,
-                    builder: (context, child) {
-                      // Oscilación amortiguada: se lee como "no", no como error del sistema.
-                      final t = _shake.value;
-                      final dx = math.sin(t * math.pi * 6) * (1 - t) * 12;
-                      return Transform.translate(offset: Offset(dx, 0), child: child);
-                    },
-                    child: _PinDots(filled: _pin.length),
+                  Entrance(
+                    index: 3,
+                    child: AnimatedBuilder(
+                      animation: _shake,
+                      builder: (context, child) {
+                        // Oscilación amortiguada: se lee como "no", no como error del sistema.
+                        final t = _shake.value;
+                        final dx = math.sin(t * math.pi * 6) * (1 - t) * 12;
+                        return Transform.translate(offset: Offset(dx, 0), child: child);
+                      },
+                      child: _PinDots(filled: _pin.length, error: _message != null),
+                    ),
                   ),
                   const SizedBox(height: 16),
                   SizedBox(
@@ -219,10 +243,7 @@ class _LockScreenState extends ConsumerState<LockScreen> with SingleTickerProvid
                     child: AnimatedOpacity(
                       opacity: message == null ? 0 : 1,
                       duration: AppMotion.short,
-                      child: Text(
-                        message ?? '',
-                        style: AppType.caption.copyWith(color: AppColors.danger),
-                      ),
+                      child: Text(message ?? '', style: AppType.caption.copyWith(color: AppColors.danger)),
                     ),
                   ),
                   const Spacer(flex: 2),
@@ -241,8 +262,9 @@ class _LockScreenState extends ConsumerState<LockScreen> with SingleTickerProvid
 }
 
 class _PinDots extends StatelessWidget {
-  const _PinDots({required this.filled});
+  const _PinDots({required this.filled, required this.error});
   final int filled;
+  final bool error;
 
   @override
   Widget build(BuildContext context) {
@@ -250,21 +272,58 @@ class _PinDots extends StatelessWidget {
       label: '$filled de $_pinLength dígitos',
       child: Row(
         mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var i = 0; i < _pinLength; i++)
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 120),
-              curve: AppMotion.ease,
-              margin: const EdgeInsets.symmetric(horizontal: 7),
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: i < filled ? AppColors.ink : AppColors.background,
-                border: Border.all(color: i < filled ? AppColors.ink : AppColors.border, width: 1.5),
-              ),
-            ),
-        ],
+        children: [for (var i = 0; i < _pinLength; i++) _PinDot(filled: i < filled, error: error)],
+      ),
+    );
+  }
+}
+
+/// Punto del PIN: al rellenarse "late" con un resorte (crece y vuelve),
+/// y tras un error se tiñe un instante del color de peligro.
+class _PinDot extends StatefulWidget {
+  const _PinDot({required this.filled, required this.error});
+  final bool filled;
+  final bool error;
+
+  @override
+  State<_PinDot> createState() => _PinDotState();
+}
+
+class _PinDotState extends State<_PinDot> with SingleTickerProviderStateMixin {
+  late final AnimationController _pop = AnimationController.unbounded(vsync: this, value: 0);
+
+  @override
+  void didUpdateWidget(_PinDot old) {
+    super.didUpdateWidget(old);
+    if (widget.filled && !old.filled && !AppMotion.reduced(context)) {
+      // Impulso con velocidad inicial: sube y el resorte lo devuelve a reposo.
+      _pop.animateWith(SpringSimulation(AppMotion.momentum, 0, 0, 9));
+    }
+  }
+
+  @override
+  void dispose() {
+    _pop.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = widget.filled ? AppColors.ink : (widget.error ? AppColors.danger : AppColors.border);
+    return AnimatedBuilder(
+      animation: _pop,
+      builder: (context, child) => Transform.scale(scale: 1 + _pop.value * 0.45, child: child),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: AppMotion.ease,
+        margin: const EdgeInsets.symmetric(horizontal: 7),
+        width: 12,
+        height: 12,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: widget.filled ? AppColors.ink : AppColors.background,
+          border: Border.all(color: color, width: 1.5),
+        ),
       ),
     );
   }
@@ -286,22 +345,22 @@ class _Keypad extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Widget key(Widget child, VoidCallback? onTap, String label) => SizedBox(
-          width: 84,
-          height: 64,
-          child: Pressable(
-            onTap: onTap,
-            scale: 0.92,
-            borderRadius: BorderRadius.circular(32),
-            semanticLabel: label,
-            child: Center(child: child),
-          ),
-        );
+      width: 84,
+      height: 64,
+      child: Pressable(
+        onTap: onTap,
+        scale: 0.92,
+        borderRadius: BorderRadius.circular(32),
+        semanticLabel: label,
+        child: Center(child: child),
+      ),
+    );
 
     Widget digit(String d) => key(
-          Text(d, style: AppType.title.copyWith(fontSize: 26, fontWeight: FontWeight.w400)),
-          () => onDigit(d),
-          d,
-        );
+      Text(d, style: AppType.title.copyWith(fontSize: 26, fontWeight: FontWeight.w400)),
+      () => onDigit(d),
+      d,
+    );
 
     final rows = [
       ['1', '2', '3'],
@@ -309,25 +368,42 @@ class _Keypad extends StatelessWidget {
       ['7', '8', '9'],
     ];
 
+    // El teclado sube fila a fila después del título y los puntos.
+    Widget enter(int i, Widget row) => Entrance(
+      index: 4 + i,
+      step: const Duration(milliseconds: 55),
+      offset: const Offset(0, 24),
+      child: row,
+    );
+
     return Column(
       children: [
-        for (final row in rows)
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: row.map(digit).toList()),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            onBiometric == null
-                ? const SizedBox(width: 84, height: 64)
-                : key(
-                    Icon(biometricIsFace ? LucideIcons.scanFace : LucideIcons.fingerprint,
-                        size: 24, color: AppColors.ink),
-                    onBiometric,
-                    'Desbloquear con biometría',
-                  ),
-            digit('0'),
-            key(const Icon(LucideIcons.delete, size: 22, color: AppColors.inkSecondary), onBackspace,
-                'Borrar'),
-          ],
+        for (final (i, row) in rows.indexed)
+          enter(i, Row(mainAxisAlignment: MainAxisAlignment.center, children: row.map(digit).toList())),
+        enter(
+          3,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              onBiometric == null
+                  ? const SizedBox(width: 84, height: 64)
+                  : key(
+                      Icon(
+                        biometricIsFace ? LucideIcons.scanFace : LucideIcons.fingerprint,
+                        size: 24,
+                        color: AppColors.ink,
+                      ),
+                      onBiometric,
+                      'Desbloquear con biometría',
+                    ),
+              digit('0'),
+              key(
+                const Icon(LucideIcons.delete, size: 22, color: AppColors.inkSecondary),
+                onBackspace,
+                'Borrar',
+              ),
+            ],
+          ),
         ),
       ],
     );
