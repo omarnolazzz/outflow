@@ -62,6 +62,10 @@ class ChargePattern {
         _ => d,
       };
 
+  /// Mismo tipo de patrón, pero anclado al día de [date] (para fechas elegidas a mano).
+  ChargePattern withDayOf(DateTime date) =>
+      kind == PatternKind.everyNDays ? this : ChargePattern._(kind, date.day);
+
   /// Texto para el detalle de la suscripción.
   String describe(BillingCycle cycle) {
     final yearly = cycle.unit == CycleUnit.year;

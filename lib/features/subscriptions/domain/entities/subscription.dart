@@ -4,6 +4,8 @@ import '../../../../core/domain/billing_cycle.dart';
 import '../../../../core/domain/money.dart';
 import '../../../merchants/domain/entities/merchant.dart';
 import '../../../notifications/domain/notification_rule.dart';
+import '../charge_pattern.dart';
+import '../charge_schedule.dart';
 
 enum SubscriptionStatus {
   active('Activa'),
@@ -95,6 +97,24 @@ class OpenCancellationWindow {
   final DateTime deadline;
 }
 
+/// Cobro ya pasado: confirmado por el usuario o asumido por falta de respuesta.
+@immutable
+class ChargeRecord {
+  const ChargeRecord({required this.date, required this.confirmed});
+
+  final DateTime date;
+
+  /// Solo los confirmados enseñan el patrón.
+  final bool confirmed;
+
+  Map<String, Object?> toJson() => {'date': date.toIso8601String(), 'confirmed': confirmed};
+
+  factory ChargeRecord.fromJson(Map<String, Object?> json) => ChargeRecord(
+        date: dateOnly(DateTime.parse(json['date'] as String)),
+        confirmed: json['confirmed'] as bool? ?? false,
+      );
+}
+
 @immutable
 class Subscription {
   const Subscription({
@@ -112,6 +132,8 @@ class Subscription {
     this.cancellationWindow,
     this.notificationRule,
     this.notes = '',
+    this.chargeHistory = const [],
+    this.chargePattern,
   });
 
   final String id;
@@ -122,7 +144,9 @@ class Subscription {
   final Money price;
   final BillingCycle cycle;
 
-  /// Ancla del calendario de cobros (primer cobro o fin de la prueba).
+  /// Ancla del calendario: el próximo cobro introducido al registrar o la
+  /// fecha elegida en la última confirmación. Los siguientes se proyectan
+  /// desde aquí con [pattern].
   final DateTime firstChargeDate;
   final SpendCategory category;
   final PaymentMethod paymentMethod;
@@ -135,12 +159,92 @@ class Subscription {
   final String notes;
   final DateTime createdAt;
 
-  /// Próximo cobro en o después de [now]. null si no está cobrando.
-  DateTime? nextCharge(DateTime now) =>
-      status.isBilling ? cycle.nextOnOrAfter(firstChargeDate, now) : null;
+  /// Cobros pasados (ordenados), confirmados o asumidos.
+  final List<ChargeRecord> chargeHistory;
 
-  /// Último cobro ya efectuado antes de hoy.
-  DateTime? lastCharge(DateTime now) => cycle.previousBefore(firstChargeDate, now);
+  /// Patrón aprendido o elegido. null → mismo día del mes que el ancla
+  /// (el comportamiento de siempre, también para datos antiguos).
+  final ChargePattern? chargePattern;
+
+  ChargePattern get pattern => chargePattern ?? ChargePattern.sameDay(firstChargeDate.day);
+
+  /// Cobros proyectados desde el ancla, en o después de [from] (perezoso, infinito).
+  Iterable<DateTime> chargesFrom(DateTime from) sync* {
+    final f = dateOnly(from);
+    final p = pattern;
+    var c = dateOnly(firstChargeDate);
+    while (c.isBefore(f)) {
+      c = p.nextAfter(c, cycle);
+    }
+    while (true) {
+      yield c;
+      c = p.nextAfter(c, cycle);
+    }
+  }
+
+  /// Último cobro proyectado desde el ancla estrictamente antes de [day].
+  DateTime? _lastProjectedBefore(DateTime day) {
+    final d = dateOnly(day);
+    var c = dateOnly(firstChargeDate);
+    if (!c.isBefore(d)) return null;
+    final p = pattern;
+    while (true) {
+      final n = p.nextAfter(c, cycle);
+      if (!n.isBefore(d)) return c;
+      c = n;
+    }
+  }
+
+  /// Próximo cobro en o después de [now]. null si no está cobrando.
+  DateTime? nextCharge(DateTime now) => status.isBilling ? chargesFrom(now).first : null;
+
+  /// Último cobro ya efectuado antes de hoy (historial o proyección).
+  DateTime? lastCharge(DateTime now) {
+    final today = dateOnly(now);
+    final fromHistory = chargeHistory.where((r) => r.date.isBefore(today)).map((r) => r.date);
+    final candidates = [...fromHistory, ?_lastProjectedBefore(today)];
+    if (candidates.isEmpty) return null;
+    return candidates.reduce((a, b) => a.isAfter(b) ? a : b);
+  }
+
+  /// Cobro previsto que ya pasó y aún no se ha confirmado (como mucho uno: el
+  /// más reciente). Se pregunta desde el día siguiente al cobro.
+  DateTime? pendingCharge(DateTime now) =>
+      status.isBilling ? _lastProjectedBefore(now) : null;
+
+  /// Registra la respuesta a la pregunta del cobro [pending]: los ciclos
+  /// anteriores sin respuesta pasan al historial como asumidos, [chargedOn]
+  /// como confirmado, y [next] se convierte en el nuevo ancla.
+  ///
+  /// [pattern] es el de la sugerencia elegida; con una fecha propia se infiere
+  /// del historial o, si no hay bastante, se reajusta el día del patrón actual.
+  Subscription confirmCharge({
+    required DateTime pending,
+    required DateTime chargedOn,
+    required DateTime next,
+    ChargePattern? pattern,
+  }) {
+    final p = dateOnly(pending);
+    final assumed = <ChargeRecord>[];
+    for (final c in chargesFrom(firstChargeDate)) {
+      if (!c.isBefore(p)) break;
+      assumed.add(ChargeRecord(date: c, confirmed: false));
+    }
+    final history = [
+      ...chargeHistory,
+      ...assumed,
+      ChargeRecord(date: dateOnly(chargedOn), confirmed: true),
+    ]..sort((a, b) => a.date.compareTo(b.date));
+    // Suficiente para aprender el patrón sin crecer sin límite.
+    final trimmed = history.length > 24 ? history.sublist(history.length - 24) : history;
+
+    final nextDate = dateOnly(next);
+    return copyWith(
+      firstChargeDate: nextDate,
+      chargeHistory: trimmed,
+      chargePattern: pattern ?? inferPattern(trimmed, cycle) ?? this.pattern.withDayOf(nextDate),
+    );
+  }
 
   int? daysUntilCharge(DateTime now) {
     final next = nextCharge(now);
@@ -159,7 +263,7 @@ class Subscription {
     if (w.policy == CancellationPolicy.afterCharge) {
       // Un cobro de hoy cuenta como "ya efectuado".
       final charges = [
-        if (!cycle.nextOnOrAfter(firstChargeDate, today).isAfter(today)) today,
+        if (!chargesFrom(today).first.isAfter(today)) today,
         ?lastCharge(today),
       ];
       for (final c in charges) {
@@ -195,6 +299,8 @@ class Subscription {
     NotificationRule? notificationRule,
     bool clearNotificationRule = false,
     String? notes,
+    List<ChargeRecord>? chargeHistory,
+    ChargePattern? chargePattern,
   }) =>
       Subscription(
         id: id,
@@ -213,5 +319,7 @@ class Subscription {
             clearNotificationRule ? null : (notificationRule ?? this.notificationRule),
         notes: notes ?? this.notes,
         createdAt: createdAt,
+        chargeHistory: chargeHistory ?? this.chargeHistory,
+        chargePattern: chargePattern ?? this.chargePattern,
       );
 }

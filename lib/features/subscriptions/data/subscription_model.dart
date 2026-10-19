@@ -2,12 +2,14 @@ import '../../../core/domain/billing_cycle.dart';
 import '../../../core/domain/money.dart';
 import '../../merchants/domain/entities/merchant.dart';
 import '../../notifications/domain/notification_rule.dart';
+import '../domain/charge_pattern.dart';
 import '../domain/entities/subscription.dart';
 
 /// Modelo de persistencia: traduce la entidad de dominio a/desde JSON.
 /// `schemaVersion` permite migraciones futuras sin romper datos guardados.
 abstract final class SubscriptionModel {
-  static const schemaVersion = 1;
+  /// v2: historial de cobros y patrón (campos opcionales; v1 se lee igual).
+  static const schemaVersion = 2;
 
   static Map<String, Object?> toJson(Subscription s) => {
         'v': schemaVersion,
@@ -25,6 +27,8 @@ abstract final class SubscriptionModel {
         'notificationRule': s.notificationRule?.toJson(),
         'notes': s.notes,
         'createdAt': s.createdAt.toIso8601String(),
+        'chargeHistory': [for (final r in s.chargeHistory) r.toJson()],
+        'chargePattern': s.chargePattern?.toJson(),
       };
 
   static Subscription fromJson(Map<String, Object?> json) {
@@ -48,6 +52,11 @@ abstract final class SubscriptionModel {
           map('notificationRule') == null ? null : NotificationRule.fromJson(map('notificationRule')!),
       notes: json['notes'] as String? ?? '',
       createdAt: date('createdAt') ?? DateTime.now(),
+      chargeHistory: [
+        for (final r in (json['chargeHistory'] as List?) ?? const [])
+          ChargeRecord.fromJson((r as Map).cast<String, Object?>()),
+      ],
+      chargePattern: map('chargePattern') == null ? null : ChargePattern.fromJson(map('chargePattern')!),
     );
   }
 }
