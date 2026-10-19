@@ -1,10 +1,18 @@
 import 'package:meta/meta.dart';
 
 import '../../../core/domain/billing_cycle.dart';
+import '../../subscriptions/domain/charge_schedule.dart';
 import '../../subscriptions/domain/entities/subscription.dart';
 import 'notification_rule.dart';
 
-enum ReminderKind { upcomingCharge, chargeDay, cancellationDeadline }
+enum ReminderKind {
+  upcomingCharge,
+  chargeDay,
+  cancellationDeadline,
+
+  /// El día siguiente a un cobro: "¿tu próximo cobro es el …?" con botones.
+  confirmCharge,
+}
 
 @immutable
 class PlannedReminder {
@@ -14,6 +22,7 @@ class PlannedReminder {
     required this.kind,
     required this.chargeDate,
     required this.daysBefore,
+    this.suggestions = const [],
   });
 
   final Subscription subscription;
@@ -23,6 +32,9 @@ class PlannedReminder {
   /// Cobro (o fecha límite de cancelación) al que se refiere el aviso.
   final DateTime chargeDate;
   final int daysBefore;
+
+  /// confirmCharge: fechas propuestas para el siguiente cobro (máx. 2, la 1ª es la principal).
+  final List<DateTime> suggestions;
 }
 
 /// Calcula, de forma pura y determinista, qué avisos deben existir.
@@ -56,6 +68,7 @@ class ReminderPlanner {
       final rule = sub.notificationRule ?? globalRule;
       if (!rule.enabled) continue;
       out.addAll(planFor(sub, rule, now: now, until: limit));
+      out.addAll(planConfirmations(sub, rule, now: now, until: limit));
     }
 
     out.sort((a, b) => a.fireAt.compareTo(b.fireAt));
@@ -89,15 +102,11 @@ class ReminderPlanner {
     // Cobros futuros dentro del horizonte (+ el margen del aviso más lejano).
     final offsets = rule.chargeOffsets;
     final maxLead = offsets.isEmpty ? 0 : offsets.first;
-    final charges = <DateTime>[];
-    var n = 0;
-    final first = sub.cycle.nextOnOrAfter(sub.firstChargeDate, now);
-    var charge = first;
-    while (!charge.isAfter(until.add(Duration(days: maxLead))) && n < 400) {
-      charges.add(charge);
-      charge = sub.cycle.nextOnOrAfter(sub.firstChargeDate, charge.add(const Duration(days: 1)));
-      n++;
-    }
+    final charges = sub
+        .chargesFrom(now)
+        .take(400)
+        .takeWhile((c) => !c.isAfter(until.add(Duration(days: maxLead))))
+        .toList();
 
     for (final c in charges) {
       for (final d in offsets) {
@@ -128,6 +137,35 @@ class ReminderPlanner {
     }
 
     out.sort((a, b) => a.fireAt.compareTo(b.fireAt));
+    return out;
+  }
+
+  /// Preguntas "¿tu próximo cobro es el …?" el día siguiente a cada cobro,
+  /// incluida la pendiente de ayer si aún no llegó la hora de hoy.
+  List<PlannedReminder> planConfirmations(
+    Subscription sub,
+    NotificationRule rule, {
+    required DateTime now,
+    required DateTime until,
+  }) {
+    if (!sub.status.isBilling) return const [];
+    final charges = [
+      ?sub.pendingCharge(now),
+      ...sub.chargesFrom(now).take(400).takeWhile((c) => c.isBefore(until)),
+    ];
+    final out = <PlannedReminder>[];
+    for (final c in charges) {
+      final fireAt = DateTime(c.year, c.month, c.day + 1, rule.hour, rule.minute);
+      if (!fireAt.isAfter(now) || fireAt.isAfter(until)) continue;
+      out.add(PlannedReminder(
+        subscription: sub,
+        fireAt: fireAt,
+        kind: ReminderKind.confirmCharge,
+        chargeDate: c,
+        daysBefore: 0,
+        suggestions: suggestNext(sub, c).take(2).map((s) => s.date).toList(),
+      ));
+    }
     return out;
   }
 }

@@ -145,6 +145,36 @@ void main() {
       expect(plan, isEmpty);
     });
 
+    test('pregunta por el próximo cobro el día siguiente a la hora de los avisos', () {
+      final s = sub(first: DateTime(2026, 10, 18));
+      final plan = planner.planConfirmations(s, const NotificationRule(),
+          now: DateTime(2026, 10, 1), until: DateTime(2026, 11, 1));
+      final c = plan.single;
+      expect(c.kind, ReminderKind.confirmCharge);
+      expect(c.fireAt, DateTime(2026, 10, 19, 9));
+      expect(c.chargeDate, DateTime(2026, 10, 18));
+      expect(c.suggestions, [DateTime(2026, 11, 18), DateTime(2026, 11, 17)]);
+    });
+
+    test('la pregunta pendiente de ayer se programa hoy si aún no llegó la hora', () {
+      final s = sub(first: DateTime(2026, 10, 18));
+      final plan = planner.planConfirmations(s, const NotificationRule(),
+          now: DateTime(2026, 10, 19, 7), until: DateTime(2026, 10, 25));
+      expect(plan.single.fireAt, DateTime(2026, 10, 19, 9));
+    });
+
+    test('el plan global incluye confirmaciones solo de suscripciones activas', () {
+      final active = sub(first: DateTime(2026, 10, 18));
+      final paused = sub(first: DateTime(2026, 10, 18), status: SubscriptionStatus.paused);
+      final plan = planner.plan(
+        subscriptions: [active, paused],
+        globalRule: const NotificationRule(),
+        now: DateTime(2026, 10, 1),
+      );
+      expect(plan.where((r) => r.kind == ReminderKind.confirmCharge).map((r) => r.subscription.status).toSet(),
+          {SubscriptionStatus.active});
+    });
+
     test('nunca supera el límite de iOS', () {
       final daily = sub(first: DateTime(2026, 1, 1), cycle: const BillingCycle(unit: CycleUnit.day));
       final plan = planner.plan(

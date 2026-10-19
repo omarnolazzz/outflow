@@ -24,6 +24,7 @@ dependencies:
   local_auth: ^3.0.2
   lucide_icons_flutter: ^4.0.0
   meta: ^1.19.0
+  path_provider: ^2.1.6
   timezone: ^0.11.2
   uuid: ^4.6.0
 

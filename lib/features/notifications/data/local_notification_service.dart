@@ -7,7 +7,9 @@ import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../../../core/utils/formatters.dart';
+import '../domain/charge_answer.dart';
 import '../domain/reminder_planner.dart';
+import 'charge_answer_inbox.dart';
 
 /// Envoltorio de `flutter_local_notifications`.
 ///
@@ -22,12 +24,27 @@ class LocalNotificationService {
 
   final FlutterLocalNotificationsPlugin _plugin;
   final _taps = StreamController<String>.broadcast();
+  final _answers = StreamController<ChargeAnswer>.broadcast();
 
   static const _channelId = 'outflow_reminders';
   static const _channelName = 'Recordatorios de cobro';
 
+  /// Categorías de iOS para la pregunta del cobro. Los textos de los botones
+  /// se registran al iniciar y no pueden cambiar por aviso: las fechas van en
+  /// el texto de la notificación.
+  static const _confirmTwo = 'confirm2';
+  static const _confirmOne = 'confirm1';
+  static const _unlock = {DarwinNotificationActionOption.authenticationRequired};
+  static final _yes = DarwinNotificationAction.plain('yes', 'Sí, esa fecha', options: _unlock);
+  static final _alt = DarwinNotificationAction.plain('alt', 'Usar la 2ª fecha', options: _unlock);
+  static final _cancel = DarwinNotificationAction.plain('cancel', 'Ya la cancelé',
+      options: {..._unlock, DarwinNotificationActionOption.destructive});
+
   /// Ids de suscripción de las notificaciones que el usuario toca.
   Stream<String> get taps => _taps.stream;
+
+  /// Botones de la pregunta del cobro pulsados con la app abierta.
+  Stream<ChargeAnswer> get answers => _answers.stream;
 
   bool _ready = false;
 
@@ -45,19 +62,27 @@ class LocalNotificationService {
     }
 
     await _plugin.initialize(
-      settings: const InitializationSettings(
-        android: AndroidInitializationSettings('ic_stat_outflow'),
+      settings: InitializationSettings(
+        android: const AndroidInitializationSettings('ic_stat_outflow'),
         // El permiso se pide en el momento oportuno, no al abrir la app.
         iOS: DarwinInitializationSettings(
           requestAlertPermission: false,
           requestBadgePermission: false,
           requestSoundPermission: false,
+          notificationCategories: [
+            DarwinNotificationCategory(_confirmTwo, actions: [_yes, _alt, _cancel]),
+            DarwinNotificationCategory(_confirmOne, actions: [_yes, _cancel]),
+          ],
         ),
       ),
       onDidReceiveNotificationResponse: (r) {
-        final id = r.payload;
+        final confirm = ConfirmPayload.tryDecode(r.payload);
+        final answer = confirm?.answerFor(r.actionId);
+        if (answer != null) return _answers.add(answer);
+        final id = confirm?.subscriptionId ?? r.payload;
         if (id != null && id.isNotEmpty) _taps.add(id);
       },
+      onDidReceiveBackgroundNotificationResponse: onBackgroundNotificationResponse,
     );
     _ready = true;
   }
@@ -67,7 +92,8 @@ class LocalNotificationService {
     if (_unsupported) return null;
     final details = await _plugin.getNotificationAppLaunchDetails();
     if (details?.didNotificationLaunchApp != true) return null;
-    return details!.notificationResponse?.payload;
+    final payload = details!.notificationResponse?.payload;
+    return ConfirmPayload.tryDecode(payload)?.subscriptionId ?? payload;
   }
 
   /// Pide permiso (Android 13+ / iOS). Llamar cuando el usuario active o
@@ -120,11 +146,19 @@ class LocalNotificationService {
         title: copy.title,
         body: copy.body,
         scheduledDate: tz.TZDateTime.from(r.fireAt, tz.local),
-        notificationDetails: _details(copy.body),
+        notificationDetails: _details(
+          copy.body,
+          category: r.kind != ReminderKind.confirmCharge
+              ? null
+              : (r.suggestions.length > 1 ? _confirmTwo : _confirmOne),
+        ),
         // Inexacto: no requiere el permiso SCHEDULE_EXACT_ALARM y un recordatorio
         // de cobro no necesita precisión de segundos.
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        payload: r.subscription.id,
+        payload: r.kind == ReminderKind.confirmCharge
+            ? ConfirmPayload(subscriptionId: r.subscription.id, charge: r.chargeDate, suggestions: r.suggestions)
+                .encode()
+            : r.subscription.id,
       );
     }
   }
@@ -140,7 +174,7 @@ class LocalNotificationService {
     );
   }
 
-  NotificationDetails _details(String? body) => NotificationDetails(
+  NotificationDetails _details(String? body, {String? category}) => NotificationDetails(
         android: AndroidNotificationDetails(
           _channelId,
           _channelName,
@@ -150,10 +184,13 @@ class LocalNotificationService {
           styleInformation: body == null ? null : BigTextStyleInformation(body),
           category: AndroidNotificationCategory.reminder,
         ),
-        iOS: const DarwinNotificationDetails(threadIdentifier: _channelId),
+        iOS: DarwinNotificationDetails(threadIdentifier: _channelId, categoryIdentifier: category),
       );
 
-  Future<void> dispose() => _taps.close();
+  Future<void> dispose() async {
+    await _taps.close();
+    await _answers.close();
+  }
 }
 
 /// Texto de cada aviso: directo, con el dato que importa primero.
@@ -179,6 +216,12 @@ class ReminderCopy {
               ? 'Último día para cancelar ${s.name}'
               : 'Quedan ${Fmt.days(r.daysBefore)} para cancelar ${s.name}',
           'La ventana de cancelación cierra el ${Fmt.dateShort(r.chargeDate)}.',
+        ),
+      ReminderKind.confirmCharge => ReminderCopy(
+          '${s.name} · ¿Próximo cobro el ${Fmt.dateShort(r.suggestions.first)}?',
+          r.suggestions.length > 1
+              ? 'Otra opción: ${Fmt.dateShort(r.suggestions[1])}. Mantén pulsado para responder.'
+              : 'Mantén pulsado para responder.',
         ),
     };
   }
