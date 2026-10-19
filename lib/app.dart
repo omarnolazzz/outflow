@@ -12,7 +12,10 @@ import 'core/theme/app_theme.dart';
 import 'core/widgets/outflow_mark.dart';
 import 'features/auth/presentation/lock_controller.dart';
 import 'features/auth/presentation/lock_screen.dart';
+import 'features/notifications/data/charge_answer_inbox.dart';
+import 'features/notifications/domain/charge_answer.dart';
 import 'features/notifications/presentation/notification_providers.dart';
+import 'features/subscriptions/presentation/subscription_providers.dart';
 import 'features/subscriptions/presentation/screens/dashboard_screen.dart';
 import 'features/subscriptions/presentation/screens/subscription_detail_screen.dart';
 
@@ -27,6 +30,7 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
   final _navigator = GlobalKey<NavigatorState>();
   late final AppLifecycleListener _lifecycle;
   StreamSubscription<String>? _tapSub;
+  StreamSubscription<ChargeAnswer>? _answerSub;
 
   /// Gracia antes de re-bloquear al volver (cambiar de app un momento no pide PIN).
   static const _relockAfter = Duration(seconds: 30);
@@ -53,6 +57,23 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
     notifications.launchPayload().then((id) {
       if (id != null) _openFromNotification(id);
     });
+
+    // Botones de "¿tu próximo cobro es el …?": al momento si la app está
+    // abierta; los pulsados con la app cerrada esperan en la bandeja.
+    final actions = ref.read(subscriptionActionsProvider);
+    _answerSub = notifications.answers.listen(actions.applyAnswer);
+    _applyQueuedAnswers();
+  }
+
+  Future<void> _applyQueuedAnswers() async {
+    final actions = ref.read(subscriptionActionsProvider);
+    try {
+      for (final a in await const ChargeAnswerInbox().drain()) {
+        await actions.applyAnswer(a);
+      }
+    } catch (e) {
+      debugPrint('No se pudieron aplicar las respuestas pendientes: $e');
+    }
   }
 
   void _onReturn() {
@@ -60,6 +81,7 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
     _hiddenAt = null;
     // "Hoy" puede haber cambiado: recalcula fechas relativas y reprograma avisos.
     ref.invalidate(nowProvider);
+    _applyQueuedAnswers();
     if (hiddenAt != null && DateTime.now().difference(hiddenAt) > _relockAfter) {
       ref.read(lockControllerProvider.notifier).lock();
     }
@@ -79,6 +101,7 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
   void dispose() {
     _lifecycle.dispose();
     _tapSub?.cancel();
+    _answerSub?.cancel();
     super.dispose();
   }
 

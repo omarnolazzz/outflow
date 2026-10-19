@@ -2,7 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:outflow/core/domain/billing_cycle.dart';
 import 'package:outflow/core/domain/money.dart';
 import 'package:outflow/features/merchants/domain/entities/merchant.dart';
+import 'package:outflow/features/notifications/domain/charge_answer.dart';
 import 'package:outflow/features/subscriptions/data/subscription_model.dart';
+import 'package:outflow/features/subscriptions/domain/apply_charge_answer.dart';
 import 'package:outflow/features/subscriptions/domain/charge_pattern.dart';
 import 'package:outflow/features/subscriptions/domain/charge_schedule.dart';
 import 'package:outflow/features/subscriptions/domain/entities/subscription.dart';
@@ -145,6 +147,35 @@ void main() {
         ], monthly),
         isNull,
       );
+    });
+  });
+
+  group('applyChargeAnswer', () {
+    final now = DateTime(2026, 10, 19, 10);
+    ChargeAnswer answer(ChargeAnswerAction action, [DateTime? next]) =>
+        ChargeAnswer(subscriptionId: 's1', charge: DateTime(2026, 10, 18), action: action, next: next);
+
+    test('"Sí" confirma el cobro y adopta el patrón de la sugerencia', () {
+      final s = applyChargeAnswer(sub(), answer(ChargeAnswerAction.yes, DateTime(2026, 11, 18)), now)!;
+      expect(s.firstChargeDate, DateTime(2026, 11, 18));
+      expect(s.chargeHistory.single.confirmed, isTrue);
+      expect(s.pattern, const ChargePattern.sameDay(18));
+    });
+
+    test('"2ª fecha" con cada 30 días aprende ese patrón', () {
+      final s = applyChargeAnswer(sub(), answer(ChargeAnswerAction.alt, DateTime(2026, 11, 17)), now)!;
+      expect(s.pattern, const ChargePattern.everyNDays(30));
+    });
+
+    test('una respuesta a un cobro ya confirmado se ignora', () {
+      final done = applyChargeAnswer(sub(), answer(ChargeAnswerAction.yes, DateTime(2026, 11, 18)), now)!;
+      expect(applyChargeAnswer(done, answer(ChargeAnswerAction.alt, DateTime(2026, 11, 17)), now), isNull);
+    });
+
+    test('"Ya la cancelé" cancela la suscripción', () {
+      final s = applyChargeAnswer(sub(), answer(ChargeAnswerAction.cancel), now)!;
+      expect(s.status, SubscriptionStatus.cancelled);
+      expect(s.pendingCharge(now), isNull);
     });
   });
 
