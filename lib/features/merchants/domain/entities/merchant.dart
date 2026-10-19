@@ -28,11 +28,18 @@ enum LogoKind {
   /// Icono lineal del registro interno (clave estable, p. ej. "tv").
   icon,
 
-  /// Imagen guardada en el almacenamiento local del dispositivo.
+  /// Imagen guardada en el almacenamiento local del dispositivo (heredado).
   file,
 
   /// Iniciales generadas a partir del nombre (fallback).
   monogram,
+
+  /// Logo oficial incluido en la app (ruta de asset, p. ej. "assets/logos/netflix.png").
+  asset,
+
+  /// Imagen elegida por el usuario: PNG cuadrado en base64. Se guarda como dato
+  /// y no como ruta porque el contenedor de iOS cambia al reinstalar la app.
+  image,
 }
 
 /// Logotipo de un comercio. Se guarda como dato (no como IconData) para que
@@ -45,6 +52,8 @@ class MerchantLogo {
   const MerchantLogo.icon(String iconKey) : this._(LogoKind.icon, iconKey);
   const MerchantLogo.file(String path) : this._(LogoKind.file, path);
   const MerchantLogo.monogram() : this._(LogoKind.monogram, '');
+  const MerchantLogo.asset(String path) : this._(LogoKind.asset, path);
+  const MerchantLogo.image(String pngBase64) : this._(LogoKind.image, pngBase64);
 
   final LogoKind kind;
   final String value;

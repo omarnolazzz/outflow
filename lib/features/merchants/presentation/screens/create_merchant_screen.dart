@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:uuid/uuid.dart';
@@ -14,6 +15,7 @@ import '../../../../core/widgets/notion_widgets.dart';
 import '../../../../core/widgets/pressable.dart';
 import '../../../../core/widgets/segmented.dart';
 import '../../../subscriptions/presentation/screens/subscription_form_screen.dart';
+import '../../data/logo_picker.dart';
 import '../../domain/entities/merchant.dart';
 import '../merchant_providers.dart';
 import '../widgets/merchant_avatar.dart';
@@ -26,15 +28,17 @@ class CreateMerchantScreen extends ConsumerStatefulWidget {
   ConsumerState<CreateMerchantScreen> createState() => _CreateMerchantScreenState();
 }
 
-enum _LogoMode { emoji, icon }
+enum _LogoMode { image, emoji, icon }
 
 class _CreateMerchantScreenState extends ConsumerState<CreateMerchantScreen> {
   late final _name = TextEditingController(text: widget.initialName);
   final _price = TextEditingController();
   final _emojiInput = TextEditingController();
 
-  _LogoMode _mode = _LogoMode.emoji;
+  _LogoMode _mode = _LogoMode.image;
   MerchantLogo _logo = const MerchantLogo.monogram();
+  bool _picking = false;
+  String? _pickError;
   SpendCategory _category = SpendCategory.other;
   CycleUnit _unit = CycleUnit.month;
   int _every = 1;
@@ -55,6 +59,26 @@ class _CreateMerchantScreenState extends ConsumerState<CreateMerchantScreen> {
   }
 
   bool get _valid => _name.text.trim().isNotEmpty;
+
+  Future<void> _pickImage(LogoSource source) async {
+    if (_picking) return;
+    setState(() {
+      _picking = true;
+      _pickError = null;
+    });
+    try {
+      final logo = await LogoPicker.pick(source);
+      if (!mounted || logo == null) return;
+      HapticFeedback.lightImpact();
+      setState(() => _logo = logo);
+    } catch (_) {
+      if (!mounted) return;
+      HapticFeedback.heavyImpact();
+      setState(() => _pickError = 'No se pudo leer esa imagen. Prueba con PNG o JPG.');
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+  }
 
   Future<void> _save() async {
     if (!_valid) return;
@@ -139,18 +163,42 @@ class _CreateMerchantScreenState extends ConsumerState<CreateMerchantScreen> {
             ],
           ),
           const SizedBox(height: 20),
-          Text('Icono', style: AppType.section),
+          Text('Logo', style: AppType.section),
           const SizedBox(height: 8),
           NotionSegmented<_LogoMode>(
             value: _mode,
-            options: const {_LogoMode.emoji: 'Emoji', _LogoMode.icon: 'Icono lineal'},
+            options: const {
+              _LogoMode.image: 'Imagen',
+              _LogoMode.emoji: 'Emoji',
+              _LogoMode.icon: 'Icono',
+            },
             onChanged: (m) => setState(() => _mode = m),
           ),
           const SizedBox(height: 12),
           AnimatedSize(
             duration: AppMotion.medium,
             curve: AppMotion.ease,
-            child: _mode == _LogoMode.emoji ? _emojiPicker() : _iconPicker(),
+            alignment: Alignment.topCenter,
+            child: AnimatedSwitcher(
+              duration: AppMotion.short,
+              switchInCurve: AppMotion.ease,
+              transitionBuilder: (child, a) => FadeTransition(
+                opacity: a,
+                child: SlideTransition(
+                  position: Tween(begin: const Offset(0, 0.04), end: Offset.zero).animate(a),
+                  child: child,
+                ),
+              ),
+              layoutBuilder: (current, previous) => Stack(
+                alignment: Alignment.topLeft,
+                children: [...previous, ?current],
+              ),
+              child: switch (_mode) {
+                _LogoMode.image => _imagePicker(),
+                _LogoMode.emoji => _emojiPicker(),
+                _LogoMode.icon => _iconPicker(),
+              },
+            ),
           ),
           const SizedBox(height: 24),
           const FieldLabel('Categoría'),
@@ -218,6 +266,43 @@ class _CreateMerchantScreenState extends ConsumerState<CreateMerchantScreen> {
     );
   }
 
+  Widget _imagePicker() => Column(
+        key: const ValueKey('image'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _SourceButton(
+                  icon: LucideIcons.images,
+                  label: 'Fotos',
+                  busy: _picking,
+                  onTap: () => _pickImage(LogoSource.photos),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _SourceButton(
+                  icon: LucideIcons.folderOpen,
+                  label: 'Archivos',
+                  busy: _picking,
+                  onTap: () => _pickImage(LogoSource.files),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          AnimatedSwitcher(
+            duration: AppMotion.short,
+            child: Text(
+              _pickError ?? 'PNG, JPG, WebP o ICO. Se recorta en cuadrado y se guarda en la app.',
+              key: ValueKey(_pickError),
+              style: AppType.caption.copyWith(color: _pickError == null ? null : AppColors.danger),
+            ),
+          ),
+        ],
+      );
+
   Widget _emojiPicker() => Column(
         key: const ValueKey('emoji'),
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -260,6 +345,43 @@ class _CreateMerchantScreenState extends ConsumerState<CreateMerchantScreen> {
               child: Icon(e.value, size: 18, color: AppColors.ink),
             ),
         ],
+      );
+}
+
+class _SourceButton extends StatelessWidget {
+  const _SourceButton({required this.icon, required this.label, required this.busy, required this.onTap});
+  final IconData icon;
+  final String label;
+  final bool busy;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Pressable(
+        onTap: busy ? null : onTap,
+        haptic: true,
+        highlight: false,
+        scale: 0.96,
+        borderRadius: BorderRadius.circular(8),
+        child: AnimatedOpacity(
+          duration: AppMotion.short,
+          opacity: busy ? 0.5 : 1,
+          child: Container(
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.surfaceMuted,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 18, color: AppColors.ink),
+                const SizedBox(width: 8),
+                Text(label, style: AppType.body.copyWith(fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
+        ),
       );
 }
 
