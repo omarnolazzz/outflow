@@ -14,7 +14,9 @@ import 'features/account/presentation/lock_screen.dart';
 import 'features/account/presentation/session_controller.dart';
 import 'features/account/presentation/welcome_screen.dart';
 import 'features/notifications/data/charge_answer_inbox.dart';
+import 'features/merchants/presentation/screens/catalog_screen.dart';
 import 'features/onboarding/presentation/onboarding_flow.dart';
+import 'features/shell/presentation/app_shell.dart';
 import 'features/wallet/presentation/wallet_providers.dart';
 import 'features/notifications/domain/charge_answer.dart';
 import 'features/notifications/presentation/notification_providers.dart';
@@ -90,6 +92,18 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
     }
   }
 
+  /// Acciones del botón "+" (se abren sobre la barra, en el navegador raíz).
+  void _quickAdd(QuickAction action) {
+    final nav = _navigator.currentState;
+    if (nav == null) return;
+    switch (action) {
+      case QuickAction.subscription:
+        nav.push(MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => const CatalogScreen()));
+      case QuickAction.expense || QuickAction.income:
+        break; // Hoja de movimiento: tarea 9.
+    }
+  }
+
   void _openFromNotification(String subscriptionId) {
     if (ref.read(sessionControllerProvider) is Ready) {
       _navigator.currentState?.push(MaterialPageRoute<void>(
@@ -135,7 +149,15 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
       locale: const Locale('es'),
       supportedLocales: const [Locale('es'), Locale('en')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
-      home: const DashboardScreen(),
+      home: AppShell(
+        pages: {
+          AppTab.home: (_) => const DashboardScreen(),
+          AppTab.movements: (_) => const _Pending('Movimientos'),
+          AppTab.subscriptions: (_) => const _Pending('Suscripciones'),
+          AppTab.summary: (_) => const _Pending('Resumen'),
+        },
+        onQuickAdd: _quickAdd,
+      ),
       builder: (context, child) => Stack(
         children: [
           // El contenido queda inerte e invisible para lectores de pantalla mientras está bloqueado.
@@ -211,5 +233,17 @@ class _PrivacyCover extends StatelessWidget {
           color: AppColors.background,
           child: Center(child: OutflowMark(size: 64)),
         ),
+      );
+}
+
+/// Pestaña aún en construcción (se sustituye en las siguientes tareas).
+class _Pending extends StatelessWidget {
+  const _Pending(this.title);
+  final String title;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(child: Text(title)),
       );
 }
