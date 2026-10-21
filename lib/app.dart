@@ -17,7 +17,10 @@ import 'features/notifications/data/charge_answer_inbox.dart';
 import 'features/merchants/presentation/screens/catalog_screen.dart';
 import 'features/onboarding/presentation/onboarding_flow.dart';
 import 'features/shell/presentation/app_shell.dart';
+import 'features/wallet/presentation/screens/movements_screen.dart';
 import 'features/wallet/presentation/wallet_providers.dart';
+import 'features/wallet/presentation/widgets/movement_sheet.dart';
+import 'features/wallet/domain/movement.dart';
 import 'features/notifications/domain/charge_answer.dart';
 import 'features/notifications/presentation/notification_providers.dart';
 import 'features/subscriptions/presentation/subscription_providers.dart';
@@ -99,16 +102,18 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
     switch (action) {
       case QuickAction.subscription:
         nav.push(MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => const CatalogScreen()));
-      case QuickAction.expense || QuickAction.income:
-        break; // Hoja de movimiento: tarea 9.
+      case QuickAction.expense:
+        showMovementSheet(nav.context);
+      case QuickAction.income:
+        showMovementSheet(nav.context, kind: MovementKind.income);
     }
   }
 
   void _openFromNotification(String subscriptionId) {
     if (ref.read(sessionControllerProvider) is Ready) {
-      _navigator.currentState?.push(MaterialPageRoute<void>(
-        builder: (_) => SubscriptionDetailScreen(subscriptionId: subscriptionId),
-      ));
+      _navigator.currentState?.push(
+        MaterialPageRoute<void>(builder: (_) => SubscriptionDetailScreen(subscriptionId: subscriptionId)),
+      );
     } else {
       _pendingSubscriptionId = subscriptionId;
     }
@@ -152,7 +157,7 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
       home: AppShell(
         pages: {
           AppTab.home: (_) => const HomeScreen(),
-          AppTab.movements: (_) => const _Pending('Movimientos'),
+          AppTab.movements: (_) => const MovementsScreen(),
           AppTab.subscriptions: (_) => const _Pending('Suscripciones'),
           AppTab.summary: (_) => const _Pending('Resumen'),
         },
@@ -185,12 +190,12 @@ class _LockLayer extends StatelessWidget {
   final SessionState session;
 
   Widget? _screen() => switch (session) {
-        SessionLoading() => const ColoredBox(color: AppColors.background),
-        SignedOut() => const WelcomeScreen(),
-        final Locked s => LockScreen(state: s),
-        final NeedsOnboarding s => OnboardingFlow(state: s),
-        Ready() => null,
-      };
+    SessionLoading() => const ColoredBox(color: AppColors.background),
+    SignedOut() => const WelcomeScreen(),
+    final Locked s => LockScreen(state: s),
+    final NeedsOnboarding s => OnboardingFlow(state: s),
+    Ready() => null,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -211,13 +216,11 @@ class _LockLayer extends StatelessWidget {
         // Navigator propio: las pantallas de entrada pueden mostrar diálogos.
         // Sin HeroController: el de MaterialApp ya lo usa el Navigator principal.
         final Widget screen => HeroControllerScope.none(
-            // Una clave por tipo de pantalla: cambiar de bienvenida a
-            // configuración o a bloqueo también se anima.
-            key: ValueKey(session.runtimeType),
-            child: Navigator(
-              onGenerateRoute: (_) => PageRouteBuilder<void>(pageBuilder: (_, _, _) => screen),
-            ),
-          ),
+          // Una clave por tipo de pantalla: cambiar de bienvenida a
+          // configuración o a bloqueo también se anima.
+          key: ValueKey(session.runtimeType),
+          child: Navigator(onGenerateRoute: (_) => PageRouteBuilder<void>(pageBuilder: (_, _, _) => screen)),
+        ),
         null => const SizedBox.shrink(key: ValueKey('open')),
       },
     );
@@ -229,11 +232,11 @@ class _PrivacyCover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const Positioned.fill(
-        child: ColoredBox(
-          color: AppColors.background,
-          child: Center(child: OutflowMark(size: 64)),
-        ),
-      );
+    child: ColoredBox(
+      color: AppColors.background,
+      child: Center(child: OutflowMark(size: 64)),
+    ),
+  );
 }
 
 /// Pestaña aún en construcción (se sustituye en las siguientes tareas).
@@ -243,7 +246,7 @@ class _Pending extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: AppColors.background,
-        body: Center(child: Text(title)),
-      );
+    backgroundColor: AppColors.background,
+    body: Center(child: Text(title)),
+  );
 }

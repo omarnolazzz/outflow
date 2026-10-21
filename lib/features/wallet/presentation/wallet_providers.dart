@@ -81,3 +81,38 @@ final chargeMovementSyncProvider = Provider<void>((ref) {
     if (changes.delete.isNotEmpty) await repo.deleteAll(changes.delete);
   });
 });
+
+final walletActionsProvider = Provider<WalletActions>(
+  (ref) => WalletActions(ref.watch(movementRepositoryProvider), ref.watch(walletSettingsRepositoryProvider)),
+);
+
+/// Comandos sobre movimientos (la UI no toca los repositorios).
+class WalletActions {
+  WalletActions(this._movements, this._settings);
+  final MovementRepository _movements;
+  final WalletSettingsRepository _settings;
+
+  Future<void> save(Movement m) => _movements.save(m);
+
+  /// Borra y devuelve el movimiento (para Deshacer). Un cobro de suscripción
+  /// borrado se recuerda para que la conciliación no lo vuelva a crear.
+  Future<Movement?> delete(String id) async {
+    final all = await _movements.watchAll().first;
+    final m = all.where((x) => x.id == id).firstOrNull;
+    if (m == null) return null;
+    if (m.origin == MovementOrigin.subscription) {
+      final s = _settings.read();
+      await _settings.save(s.copyWith(deletedChargeIds: {...s.deletedChargeIds, id}));
+    }
+    await _movements.delete(id);
+    return m;
+  }
+
+  Future<void> restore(Movement m) async {
+    final s = _settings.read();
+    if (s.deletedChargeIds.contains(m.id)) {
+      await _settings.save(s.copyWith(deletedChargeIds: {...s.deletedChargeIds}..remove(m.id)));
+    }
+    await _movements.save(m);
+  }
+}
