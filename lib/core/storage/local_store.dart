@@ -15,6 +15,8 @@ class LocalStore {
   static const subscriptionsBox = 'subscriptions';
   static const merchantsBox = 'merchants';
   static const settingsBox = 'settings';
+  static const movementsBox = 'movements';
+  static const categoriesBox = 'categories';
 
   static const _keyName = 'outflow.hive.key';
 
@@ -24,7 +26,7 @@ class LocalStore {
     await Hive.initFlutter('outflow');
     final cipher = HiveAesCipher(await _encryptionKey(secure));
     final boxes = <String, Box<String>>{};
-    for (final name in const [subscriptionsBox, merchantsBox, settingsBox]) {
+    for (final name in const [subscriptionsBox, merchantsBox, settingsBox, movementsBox, categoriesBox]) {
       boxes[name] = await Hive.openBox<String>(name, encryptionCipher: cipher);
     }
     return LocalStore._(boxes);
@@ -53,6 +55,12 @@ class LocalStore {
       _box(box).put(id, jsonEncode(json));
 
   Future<void> remove(String box, String id) => _box(box).delete(id);
+
+  /// Escritura en bloque (una sola ráfaga de cambios para los observadores).
+  Future<void> writeAll(String box, Map<String, Map<String, Object?>> docs) =>
+      _box(box).putAll({for (final e in docs.entries) e.key: jsonEncode(e.value)});
+
+  Future<void> removeAll(String box, Iterable<String> ids) => _box(box).deleteAll(ids);
 
   /// Emite el contenido actual y lo re-emite en cada cambio de la caja.
   Stream<List<Map<String, Object?>>> watchAll(String box) async* {
