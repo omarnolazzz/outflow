@@ -21,7 +21,7 @@ import 'features/wallet/presentation/wallet_providers.dart';
 import 'features/notifications/domain/charge_answer.dart';
 import 'features/notifications/presentation/notification_providers.dart';
 import 'features/subscriptions/presentation/subscription_providers.dart';
-import 'features/subscriptions/presentation/screens/dashboard_screen.dart';
+import 'features/home/presentation/home_screen.dart';
 import 'features/subscriptions/presentation/screens/subscription_detail_screen.dart';
 
 class OutflowApp extends ConsumerStatefulWidget {
@@ -151,7 +151,7 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       home: AppShell(
         pages: {
-          AppTab.home: (_) => const DashboardScreen(),
+          AppTab.home: (_) => const HomeScreen(),
           AppTab.movements: (_) => const _Pending('Movimientos'),
           AppTab.subscriptions: (_) => const _Pending('Suscripciones'),
           AppTab.summary: (_) => const _Pending('Resumen'),

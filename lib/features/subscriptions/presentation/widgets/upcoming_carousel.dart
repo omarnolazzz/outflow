@@ -7,7 +7,8 @@ import '../../../../core/motion/motion_widgets.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/utils/formatters.dart';
-import '../../../../core/widgets/notion_widgets.dart';
+import '../../../../core/widgets/status_pill.dart';
+import '../../../../core/widgets/surface_card.dart';
 import '../../../../core/widgets/pressable.dart';
 import '../../../merchants/domain/entities/merchant.dart';
 import '../../../merchants/presentation/widgets/merchant_avatar.dart';
@@ -49,7 +50,7 @@ class _UpcomingCarouselState extends State<UpcomingCarousel> {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 168,
+      height: 180,
       child: Padding(
         padding: const EdgeInsets.only(left: 20),
         child: PageView.builder(
@@ -129,14 +130,14 @@ class _UpcomingCard extends StatelessWidget {
     final isDeadline = item.kind == UpcomingKind.cancellationDeadline;
 
     final tag = isDeadline
-        ? NotionTag(
+        ? StatusPill(
             item.daysLeft == 0 ? 'Último día' : 'Cierra ${Fmt.relativeDays(item.daysLeft).toLowerCase()}',
-            tone: item.urgency == Urgency.later ? TagTone.neutral : TagTone.danger,
+            tone: item.urgency == Urgency.later ? PillTone.neutral : PillTone.danger,
             icon: LucideIcons.hourglass,
           )
-        : NotionTag(
+        : StatusPill(
             Fmt.relativeDays(item.daysLeft),
-            tone: item.urgency == Urgency.now ? TagTone.strong : TagTone.neutral,
+            tone: item.urgency == Urgency.now ? PillTone.accent : PillTone.neutral,
           );
 
     return Pressable(
@@ -146,8 +147,8 @@ class _UpcomingCard extends StatelessWidget {
       semanticLabel: isDeadline
           ? 'Ventana de cancelación de ${s.name}, cierra el ${Fmt.dateLong(item.date)}'
           : '${s.name}, ${Fmt.money(s.price)}, ${Fmt.dateLong(item.date)}',
-      child: NotionBlock(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      child: SurfaceCard(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -156,11 +157,11 @@ class _UpcomingCard extends StatelessWidget {
                 MerchantAvatar(
                   logo: merchant?.logo ?? const MerchantLogo.monogram(),
                   name: s.name,
-                  size: 30,
+                  size: 40,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(s.name, style: AppType.bodyStrong, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  child: Text(s.name, style: AppType.headline, maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
                 tag,
               ],
@@ -197,9 +198,9 @@ class _CycleProgress extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(1),
+      borderRadius: BorderRadius.circular(2),
       child: SizedBox(
-        height: 2,
+        height: 4,
         child: TweenAnimationBuilder<double>(
           // Se rellena cuando el contenido se revela (no bajo la pantalla de bloqueo).
           tween: Tween(begin: 0, end: EntranceGate.isOpen(context) ? value : 0),
@@ -207,9 +208,9 @@ class _CycleProgress extends StatelessWidget {
           curve: Curves.easeOutCubic,
           builder: (context, v, _) => LinearProgressIndicator(
             value: v,
-            minHeight: 2,
-            backgroundColor: AppColors.divider,
-            color: AppColors.ink,
+            minHeight: 4,
+            backgroundColor: AppColors.fill,
+            color: AppColors.accent,
           ),
         ),
       ),

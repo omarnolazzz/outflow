@@ -12,8 +12,11 @@ double shellBottomInset(BuildContext context) => kTabBarHeight + 24 + MediaQuery
 
 /// Permite a una página cambiar de pestaña ("Ver todos" → Movimientos).
 class ShellScope extends InheritedWidget {
-  const ShellScope({super.key, required this.select, required super.child});
+  const ShellScope({super.key, required this.select, required this.quickAdd, required super.child});
   final ValueChanged<AppTab> select;
+
+  /// Mismas acciones que el botón "+" (p. ej. "Registrar ingreso" desde Inicio).
+  final ValueChanged<QuickAction> quickAdd;
 
   static ShellScope? maybeOf(BuildContext context) => context.dependOnInheritedWidgetOfExactType<ShellScope>();
 
@@ -81,6 +84,7 @@ class _AppShellState extends State<AppShell> {
       },
       child: ShellScope(
         select: _select,
+        quickAdd: widget.onQuickAdd,
         child: Scaffold(
           backgroundColor: AppColors.background,
           body: Stack(

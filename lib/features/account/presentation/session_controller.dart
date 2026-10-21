@@ -44,6 +44,12 @@ class Ready extends SessionState {
   final Account account;
 }
 
+/// Cuenta con la que se está usando la app (null fuera de sesión).
+final currentAccountProvider = Provider<Account?>((ref) => switch (ref.watch(sessionControllerProvider)) {
+      Ready(:final account) || Locked(:final account) || NeedsOnboarding(:final account) => account,
+      _ => null,
+    });
+
 /// Ya había suscripciones guardadas (usuario que actualiza desde la versión con PIN).
 final hasExistingDataProvider = Provider<bool>(
   (ref) => ref.watch(localStoreProvider).readAll(LocalStore.subscriptionsBox).isNotEmpty,
