@@ -1,26 +1,49 @@
 import 'package:flutter/painting.dart';
 
-/// Paleta "Notion": papel blanco, tinta grafito y un solo acento monocromo.
-/// El color se reserva para estados que lo necesitan (error), nunca decoración.
+/// Paleta clara estilo iOS: página gris muy claro, tarjetas blancas, tinta
+/// casi negra y un único acento esmeralda. El rojo se reserva para vencidos y
+/// errores; los gastos van en tinta.
 abstract final class AppColors {
-  static const background = Color(0xFFFFFFFF);
-  static const surfaceMuted = Color(0xFFF7F7F5);
-  static const border = Color(0xFFE1E1E0);
-  static const divider = Color(0xFFEDEDEC);
+  /// Fondo de página (systemGroupedBackground).
+  static const background = Color(0xFFF5F5F7);
 
-  /// Resaltado al presionar (equivale al hover de Notion: rgba(55,53,47,.08)).
-  static const pressed = Color(0xFFEFEFED);
+  /// Tarjetas y hojas.
+  static const surface = Color(0xFFFFFFFF);
 
-  static const ink = Color(0xFF37352F);
-  static const inkSecondary = Color(0xFF787774);
-  static const inkTertiary = Color(0xFF9B9A97);
-  static const accent = Color(0xFF191919);
+  /// Rellenos discretos: campos, chips, pistas de barras.
+  static const fill = Color(0xFFEFEFF4);
+
+  static const separator = Color(0xFFE5E5EA);
+
+  /// Resaltado al presionar.
+  static const pressed = Color(0xFFEBEBF0);
+
+  static const ink = Color(0xFF1C1C1E);
+  static const inkSecondary = Color(0xFF6E6E73);
+  static const inkTertiary = Color(0xFFAEAEB2);
+
+  static const accent = Color(0xFF0FA47A);
+  static const accentSoft = Color(0xFFE2F5EE);
   static const onAccent = Color(0xFFFFFFFF);
 
-  /// Único color de estado: errores y cobros vencidos.
-  static const danger = Color(0xFFD44C47);
-  static const dangerSurface = Color(0xFFFDEBEC);
+  /// Ingresos: mismo verde que el acento.
+  static const income = accent;
 
-  /// Callout de Notion (fondo gris cálido).
-  static const callout = Color(0xFFF1F1EF);
+  static const danger = Color(0xFFE5484D);
+  static const dangerSoft = Color(0xFFFDECEC);
+
+  /// Cristal: tinte blanco translúcido y borde luminoso.
+  static const glassTint = Color(0xB8FFFFFF);
+  static const glassStroke = Color(0x99FFFFFF);
+
+  /// Sombra difusa de tarjetas.
+  static const shadow = Color(0x0F000000);
+
+  // Nombres del estilo anterior, aún usados por pantallas sin migrar.
+  // Se eliminan al terminar la migración.
+  static const surfaceMuted = fill;
+  static const border = separator;
+  static const divider = separator;
+  static const dangerSurface = dangerSoft;
+  static const callout = fill;
 }

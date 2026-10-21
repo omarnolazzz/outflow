@@ -25,6 +25,16 @@ abstract final class Fmt {
     'EUR': '€', 'GBP': '£', 'PEN': 'S/', 'BRL': 'R\$',
   };
 
+  /// Símbolo con el que se muestra [currency] ("S/", "US$", "€").
+  static String symbol(String currency) {
+    final local = NumberFormat.simpleCurrency(locale: locale).currencyName;
+    if (currency == local) return NumberFormat.simpleCurrency(locale: locale, name: currency).currencySymbol;
+    return _foreignSymbols[currency] ?? currency;
+  }
+
+  /// Separador decimal del locale ("." o ",").
+  static String get decimalSeparator => NumberFormat.decimalPattern(locale).symbols.DECIMAL_SEP;
+
   static String money(Money m) {
     final f = _money.putIfAbsent('$locale|${m.currency}', () {
       final local = NumberFormat.simpleCurrency(locale: locale).currencyName;

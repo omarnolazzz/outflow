@@ -11,11 +11,11 @@ abstract final class AppTheme {
       onPrimary: AppColors.onAccent,
       secondary: AppColors.ink,
       onSecondary: AppColors.onAccent,
-      surface: AppColors.background,
+      surface: AppColors.surface,
       onSurface: AppColors.ink,
-      surfaceContainerHighest: AppColors.surfaceMuted,
-      outline: AppColors.border,
-      outlineVariant: AppColors.divider,
+      surfaceContainerHighest: AppColors.fill,
+      outline: AppColors.separator,
+      outlineVariant: AppColors.separator,
       error: AppColors.danger,
     );
 
@@ -42,17 +42,17 @@ abstract final class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: AppColors.surfaceMuted,
+        fillColor: AppColors.fill,
         isDense: true,
         hintStyle: AppType.body.copyWith(color: AppColors.inkTertiary),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        border: _inputBorder(AppColors.border),
-        enabledBorder: _inputBorder(AppColors.border),
-        focusedBorder: _inputBorder(AppColors.ink),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        border: _inputBorder(Colors.transparent),
+        enabledBorder: _inputBorder(Colors.transparent),
+        focusedBorder: _inputBorder(AppColors.accent),
         errorBorder: _inputBorder(AppColors.danger),
       ),
       switchTheme: SwitchThemeData(
-        thumbColor: WidgetStateProperty.all(AppColors.background),
+        thumbColor: WidgetStateProperty.all(AppColors.surface),
         trackColor: WidgetStateProperty.resolveWith(
           (s) => s.contains(WidgetState.selected) ? AppColors.accent : AppColors.border,
         ),
@@ -63,17 +63,17 @@ abstract final class AppTheme {
         backgroundColor: AppColors.ink,
         contentTextStyle: AppType.body.copyWith(color: AppColors.onAccent),
         actionTextColor: AppColors.onAccent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         elevation: 0,
       ),
       bottomSheetTheme: const BottomSheetThemeData(
-        backgroundColor: AppColors.background,
+        backgroundColor: AppColors.surface,
         showDragHandle: true,
-        dragHandleColor: AppColors.border,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(14))),
+        dragHandleColor: AppColors.separator,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
       ),
       datePickerTheme: const DatePickerThemeData(
-        backgroundColor: AppColors.background,
+        backgroundColor: AppColors.surface,
         elevation: 0,
       ),
       pageTransitionsTheme: PageTransitionsTheme(
@@ -86,7 +86,7 @@ abstract final class AppTheme {
   }
 
   static OutlineInputBorder _inputBorder(Color color) => OutlineInputBorder(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(color: color, width: 1),
       );
 }
