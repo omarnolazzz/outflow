@@ -10,9 +10,12 @@ import 'core/motion/motion_widgets.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'core/widgets/outflow_mark.dart';
-import 'features/auth/presentation/lock_controller.dart';
-import 'features/auth/presentation/lock_screen.dart';
+import 'features/account/presentation/lock_screen.dart';
+import 'features/account/presentation/session_controller.dart';
+import 'features/account/presentation/welcome_screen.dart';
 import 'features/notifications/data/charge_answer_inbox.dart';
+import 'features/onboarding/presentation/onboarding_flow.dart';
+import 'features/wallet/presentation/wallet_providers.dart';
 import 'features/notifications/domain/charge_answer.dart';
 import 'features/notifications/presentation/notification_providers.dart';
 import 'features/subscriptions/presentation/subscription_providers.dart';
@@ -83,12 +86,12 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
     ref.invalidate(nowProvider);
     _applyQueuedAnswers();
     if (hiddenAt != null && DateTime.now().difference(hiddenAt) > _relockAfter) {
-      ref.read(lockControllerProvider.notifier).lock();
+      ref.read(sessionControllerProvider.notifier).lock();
     }
   }
 
   void _openFromNotification(String subscriptionId) {
-    if (ref.read(lockControllerProvider) is LockUnlocked) {
+    if (ref.read(sessionControllerProvider) is Ready) {
       _navigator.currentState?.push(MaterialPageRoute<void>(
         builder: (_) => SubscriptionDetailScreen(subscriptionId: subscriptionId),
       ));
@@ -110,16 +113,19 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
     // Mantiene los avisos programados sincronizados con los datos.
     ref.watch(reminderSyncProvider);
 
-    ref.listen(lockControllerProvider, (prev, next) {
-      if (next is LockUnlocked && _pendingSubscriptionId != null) {
+    // Los cobros de suscripciones se reflejan como gastos de la wallet.
+    ref.watch(chargeMovementSyncProvider);
+
+    ref.listen(sessionControllerProvider, (prev, next) {
+      if (next is Ready && _pendingSubscriptionId != null) {
         final id = _pendingSubscriptionId!;
         _pendingSubscriptionId = null;
         WidgetsBinding.instance.addPostFrameCallback((_) => _openFromNotification(id));
       }
     });
 
-    final lock = ref.watch(lockControllerProvider);
-    final locked = lock is! LockUnlocked;
+    final session = ref.watch(sessionControllerProvider);
+    final locked = session is! Ready;
 
     return MaterialApp(
       title: 'Outflow',
@@ -141,7 +147,7 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
               child: EntranceGate(open: !locked, child: child!),
             ),
           ),
-          _LockLayer(locked: locked),
+          _LockLayer(session: session),
           if (_obscured && !locked) const _PrivacyCover(),
         ],
       ),
@@ -153,8 +159,16 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
 /// hoja que baja) mientras el contenido entra por escalones; al re-bloquear
 /// sube de la misma forma.
 class _LockLayer extends StatelessWidget {
-  const _LockLayer({required this.locked});
-  final bool locked;
+  const _LockLayer({required this.session});
+  final SessionState session;
+
+  Widget? _screen() => switch (session) {
+        SessionLoading() => const ColoredBox(color: AppColors.background),
+        SignedOut() => const WelcomeScreen(),
+        final Locked s => LockScreen(state: s),
+        final NeedsOnboarding s => OnboardingPlaceholder(state: s),
+        Ready() => null,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -171,18 +185,19 @@ class _LockLayer extends StatelessWidget {
           child: fade,
         );
       },
-      child: locked
-          // Navigator propio: la pantalla de bloqueo puede mostrar diálogos.
-          // Sin HeroController: el de MaterialApp ya lo usa el Navigator principal.
-          ? HeroControllerScope.none(
-              key: const ValueKey('lock'),
-              child: Navigator(
-                onGenerateRoute: (_) => PageRouteBuilder<void>(
-                  pageBuilder: (_, _, _) => const LockScreen(),
-                ),
-              ),
-            )
-          : const SizedBox.shrink(key: ValueKey('open')),
+      child: switch (_screen()) {
+        // Navigator propio: las pantallas de entrada pueden mostrar diálogos.
+        // Sin HeroController: el de MaterialApp ya lo usa el Navigator principal.
+        final Widget screen => HeroControllerScope.none(
+            // Una clave por tipo de pantalla: cambiar de bienvenida a
+            // configuración o a bloqueo también se anima.
+            key: ValueKey(session.runtimeType),
+            child: Navigator(
+              onGenerateRoute: (_) => PageRouteBuilder<void>(pageBuilder: (_, _, _) => screen),
+            ),
+          ),
+        null => const SizedBox.shrink(key: ValueKey('open')),
+      },
     );
   }
 }

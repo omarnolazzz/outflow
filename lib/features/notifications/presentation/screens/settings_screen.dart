@@ -3,12 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../../../core/motion/app_motion.dart';
 import '../../../../core/motion/motion_widgets.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/notion_widgets.dart';
-import '../../../auth/presentation/lock_controller.dart';
 import '../../domain/notification_rule.dart';
 import '../notification_providers.dart';
 import '../widgets/notification_rule_editor.dart';
@@ -21,26 +19,6 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  String? _bioLabel;
-  bool _bioEnabled = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadSecurity();
-  }
-
-  Future<void> _loadSecurity() async {
-    final lock = ref.read(lockControllerProvider.notifier);
-    final label = await lock.availableBiometric();
-    final enabled = await lock.biometricsEnabled();
-    if (!mounted) return;
-    setState(() {
-      _bioLabel = label;
-      _bioEnabled = enabled;
-    });
-  }
-
   Future<void> _saveRule(NotificationRule previous, NotificationRule rule) async {
     await ref.read(notificationSettingsRepositoryProvider).saveGlobalRule(rule);
     if (rule.enabled && !previous.enabled) {
@@ -97,37 +75,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
           ),
-          e(const SectionLabel('Seguridad', padding: EdgeInsets.fromLTRB(8, 32, 8, 6))),
-          // La opción de biometría aparece deslizándose cuando se detecta.
-          AnimatedSize(
-            duration: AppMotion.medium,
-            curve: AppMotion.ease,
-            child: _bioLabel == null
-                ? const SizedBox(width: double.infinity)
-                : SwitchListTile.adaptive(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                    secondary: const Icon(LucideIcons.scanFace, size: 18, color: AppColors.inkTertiary),
-                    title: Text('Desbloquear con $_bioLabel', style: AppType.body),
-                    value: _bioEnabled,
-                    onChanged: (v) async {
-                      setState(() => _bioEnabled = v);
-                      HapticFeedback.selectionClick();
-                      await ref.read(lockControllerProvider.notifier).setBiometricsEnabled(v);
-                    },
-                  ),
-          ),
-          e(
-            PropertyRow(
-              icon: LucideIcons.lock,
-              label: 'Bloquear ahora',
-              onTap: () {
-                Navigator.of(context).popUntil((r) => r.isFirst);
-                ref.read(lockControllerProvider.notifier).lock();
-              },
-              value: Text('PIN de 6 dígitos', style: AppType.caption),
-            ),
-          ),
-          const SizedBox(height: 24),
           e(
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),

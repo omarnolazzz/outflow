@@ -1,5 +1,5 @@
-import 'dart:ui' show PlatformDispatcher;
-
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -7,6 +7,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 
 import 'app.dart';
+import 'core/config/firebase_config.dart';
 import 'core/di/core_providers.dart';
 import 'core/storage/local_store.dart';
 import 'core/utils/formatters.dart';
@@ -24,6 +25,10 @@ Future<void> main() async {
   final store = await LocalStore.open(secure);
   final notifications = LocalNotificationService();
   await notifications.init();
+  // Cuenta Google real solo en el iPhone con la configuración inyectada al compilar.
+  if (!kIsWeb && FirebaseConfig.isConfigured) {
+    await Firebase.initializeApp(options: FirebaseConfig.options);
+  }
 
   runApp(
     ProviderScope(

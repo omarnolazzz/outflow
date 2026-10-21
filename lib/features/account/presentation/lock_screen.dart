@@ -1,0 +1,138 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
+import '../../../core/motion/motion_widgets.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_typography.dart';
+import '../../../core/widgets/outflow_mark.dart';
+import '../../../core/widgets/primary_button.dart';
+import '../../../core/widgets/pressable.dart';
+import 'account_avatar.dart';
+import 'intro_host.dart';
+import 'session_controller.dart';
+
+/// Pantalla de bloqueo: Face ID solo al pulsar (nunca automático) o volver a
+/// verificar la cuenta con Google.
+class LockScreen extends ConsumerStatefulWidget {
+  const LockScreen({super.key, required this.state});
+  final Locked state;
+
+  @override
+  ConsumerState<LockScreen> createState() => _LockScreenState();
+}
+
+enum _Busy { none, faceId, google }
+
+class _LockScreenState extends ConsumerState<LockScreen> {
+  _Busy _busy = _Busy.none;
+  String? _error;
+
+  /// Sin red y sin Face ID: el código del iPhone como salida.
+  bool _offerPasscode = false;
+
+  SessionController get _session => ref.read(sessionControllerProvider.notifier);
+
+  Future<void> _faceId() async {
+    setState(() {
+      _busy = _Busy.faceId;
+      _error = null;
+    });
+    final ok = await _session.unlockWithFaceId();
+    if (!mounted) return;
+    if (!ok) HapticFeedback.heavyImpact();
+    setState(() => _busy = _Busy.none);
+  }
+
+  Future<void> _google() async {
+    setState(() {
+      _busy = _Busy.google;
+      _error = null;
+    });
+    final error = await _session.continueWithGoogle();
+    if (!mounted) return;
+    setState(() {
+      _busy = _Busy.none;
+      _error = error;
+      _offerPasscode = error == 'Sin conexión' && !widget.state.faceId;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final account = widget.state.account;
+    return IntroHost(
+      builder: (context, markKey, introRunning) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            children: [
+              const Spacer(flex: 3),
+              Opacity(opacity: introRunning ? 0 : 1, child: OutflowMark(key: markKey, size: 64)),
+              const SizedBox(height: 36),
+              Entrance(
+                index: 1,
+                scale: 0.8,
+                child: AccountAvatar(account: account, size: 64),
+              ),
+              const SizedBox(height: 14),
+              Entrance(index: 2, child: Text('Hola, ${account.firstName}', style: AppType.title1)),
+              const SizedBox(height: 4),
+              Entrance(index: 3, child: Text(account.email, style: AppType.subhead)),
+              const Spacer(flex: 4),
+              SizedBox(
+                height: 20,
+                child: AnimatedOpacity(
+                  opacity: _error == null ? 0 : 1,
+                  duration: const Duration(milliseconds: 200),
+                  child: Text(_error ?? '', style: AppType.footnote.copyWith(color: AppColors.danger)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (widget.state.faceId) ...[
+                Entrance(
+                  index: 4,
+                  offset: const Offset(0, 24),
+                  child: PrimaryButton(
+                    label: 'Desbloquear con ${widget.state.faceIdLabel}',
+                    icon: const Icon(LucideIcons.scanFace, size: 20, color: AppColors.onAccent),
+                    loading: _busy == _Busy.faceId,
+                    onTap: _busy == _Busy.none ? _faceId : null,
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+              Entrance(
+                index: 5,
+                offset: const Offset(0, 24),
+                child: PrimaryButton(
+                  label: 'Continuar con Google',
+                  icon: const GoogleGlyph(),
+                  secondary: widget.state.faceId,
+                  loading: _busy == _Busy.google,
+                  onTap: _busy == _Busy.none ? _google : null,
+                ),
+              ),
+              if (_offerPasscode) ...[
+                const SizedBox(height: 12),
+                Pressable(
+                  onTap: _faceId,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Text(
+                      'Usar el código del iPhone',
+                      style: AppType.callout.copyWith(color: AppColors.accent, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

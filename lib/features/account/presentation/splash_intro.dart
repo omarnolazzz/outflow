@@ -163,7 +163,7 @@ class _SplashIntroState extends State<SplashIntro> with SingleTickerProviderStat
                       const SizedBox(height: 10),
                       Opacity(
                         opacity: _seg(900, 1200),
-                        child: Text('Tus pagos, bajo control', style: AppType.caption),
+                        child: Text('Tu wallet, bajo control', style: AppType.caption),
                       ),
                     ],
                   ),

@@ -3,12 +3,21 @@ name: iOS IPA sin firmar
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, outflow-2]
 
 jobs:
   build-ios:
     runs-on: macos-latest
     timeout-minutes: 45
+    env:
+      # Configuración de Firebase / Google (secretos del repositorio). Sin
+      # ellos la app compila igual y usa la cuenta de vista previa.
+      FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+      FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+      FIREBASE_SENDER_ID: ${{ secrets.FIREBASE_SENDER_ID }}
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
+      GOOGLE_REVERSED_CLIENT_ID: ${{ secrets.GOOGLE_REVERSED_CLIENT_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -24,8 +33,25 @@ jobs:
       - name: Tests
         run: flutter test
 
+      # Google Sign-In vuelve a la app por el esquema REVERSED_CLIENT_ID.
+      - name: Esquema de URL de Google
+        if: env.GOOGLE_REVERSED_CLIENT_ID != ''
+        run: |
+          P=ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$P"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$P"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$P"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string $GOOGLE_REVERSED_CLIENT_ID" "$P"
+          /usr/libexec/PlistBuddy -c "Add :GIDClientID string $GOOGLE_IOS_CLIENT_ID" "$P"
+
       - name: Compilar iOS (sin firma)
-        run: flutter build ios --release --no-codesign
+        run: |
+          flutter build ios --release --no-codesign \
+            --dart-define=FIREBASE_API_KEY="$FIREBASE_API_KEY" \
+            --dart-define=FIREBASE_APP_ID="$FIREBASE_APP_ID" \
+            --dart-define=FIREBASE_SENDER_ID="$FIREBASE_SENDER_ID" \
+            --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID" \
+            --dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID"
 
       - name: Empaquetar IPA
         run: |

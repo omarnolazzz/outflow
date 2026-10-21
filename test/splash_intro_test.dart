@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:outflow/features/auth/presentation/splash_intro.dart';
+import 'package:outflow/features/account/presentation/splash_intro.dart';
 
 void main() {
   Widget host({required GlobalKey target, required bool ready, required List<String> log}) =>
