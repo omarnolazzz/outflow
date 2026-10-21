@@ -166,7 +166,7 @@ class _LockLayer extends StatelessWidget {
         SessionLoading() => const ColoredBox(color: AppColors.background),
         SignedOut() => const WelcomeScreen(),
         final Locked s => LockScreen(state: s),
-        final NeedsOnboarding s => OnboardingPlaceholder(state: s),
+        final NeedsOnboarding s => OnboardingFlow(state: s),
         Ready() => null,
       };
 

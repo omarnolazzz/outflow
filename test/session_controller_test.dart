@@ -1,13 +1,12 @@
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:outflow/features/account/domain/account.dart';
 import 'package:outflow/features/account/domain/auth_service.dart';
 import 'package:outflow/features/account/presentation/session_controller.dart';
-import 'package:outflow/features/wallet/data/wallet_settings_repository.dart';
 import 'package:outflow/features/wallet/domain/wallet_settings.dart';
 import 'package:outflow/features/wallet/presentation/wallet_providers.dart';
+
+import 'support/fakes.dart';
 
 const gabriel = Account(uid: 'u1', email: 'g@example.com', displayName: 'Gabriel');
 
@@ -42,21 +41,6 @@ class FakeBiometrics implements Biometrics {
   Future<bool> authenticate(String reason) async {
     calls++;
     return result;
-  }
-}
-
-class MemorySettings implements WalletSettingsRepository {
-  MemorySettings([this.value = const WalletSettings()]);
-  WalletSettings value;
-  final _c = StreamController<WalletSettings>.broadcast();
-  @override
-  WalletSettings read() => value;
-  @override
-  Future<void> save(WalletSettings s) async => _c.add(value = s);
-  @override
-  Stream<WalletSettings> watch() async* {
-    yield value;
-    yield* _c.stream;
   }
 }
 
