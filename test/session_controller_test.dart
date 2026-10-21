@@ -189,6 +189,16 @@ void main() {
     expect(c.read(sessionControllerProvider), isA<Ready>());
   });
 
+  test('una wallet creada con la cuenta de vista previa pasa a la primera cuenta real de Google', () async {
+    settings.value = const WalletSettings(onboardingDone: true, ownerUid: 'preview');
+    final c = await start();
+    expect(c.read(sessionControllerProvider), isA<SignedOut>());
+    final error = await c.read(sessionControllerProvider.notifier).continueWithGoogle();
+    expect(error, isNull);
+    expect(c.read(sessionControllerProvider), isA<Ready>());
+    expect(settings.read().ownerUid, 'u1');
+  });
+
   test('cerrar sesión vuelve a SignedOut', () async {
     auth.current = gabriel;
     settings.value = const WalletSettings(onboardingDone: true);

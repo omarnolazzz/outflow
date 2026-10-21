@@ -10,7 +10,10 @@ class PreviewAuthService implements AuthService {
   final LocalStore _store;
   static const _id = 'account.preview';
 
-  static const _demo = Account(uid: 'preview', email: 'vista.previa@outflow.app', displayName: 'Vista previa');
+  /// Id de la cuenta de vista previa.
+  static const uid = 'preview';
+
+  static const _demo = Account(uid: uid, email: 'vista.previa@outflow.app', displayName: 'Vista previa');
 
   @override
   bool get verifiesIdentity => false;

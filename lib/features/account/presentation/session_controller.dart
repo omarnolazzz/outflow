@@ -4,6 +4,7 @@ import '../../../core/di/core_providers.dart';
 import '../../../core/storage/local_store.dart';
 import '../../wallet/presentation/wallet_providers.dart';
 import '../data/auth_providers.dart';
+import '../data/preview_auth_service.dart';
 import '../domain/account.dart';
 import '../domain/auth_service.dart';
 
@@ -126,13 +127,18 @@ class SessionController extends Notifier<SessionState> {
     try {
       final account = await _auth.signInWithGoogle();
       final repo = ref.read(walletSettingsRepositoryProvider);
-      final owner = repo.read().ownerUid ?? (s is Locked ? s.account.uid : null);
+      final saved = repo.read().ownerUid;
+      // Una wallet empezada con la cuenta de vista previa pasa a la primera
+      // cuenta real de Google con la que se entre.
+      final owner = saved == PreviewAuthService.uid && _auth.verifiesIdentity
+          ? null
+          : saved ?? (s is Locked ? s.account.uid : null);
       if (owner != null && owner != account.uid) {
         // Otra cuenta no abre esta wallet.
         await _auth.signOut();
         return 'Esa no es la cuenta de esta wallet.';
       }
-      if (owner == null) await repo.save(repo.read().copyWith(ownerUid: account.uid));
+      if (owner == null && saved != account.uid) await repo.save(repo.read().copyWith(ownerUid: account.uid));
       state = _after(account, lock: false);
       return null;
     } on AuthOffline {
