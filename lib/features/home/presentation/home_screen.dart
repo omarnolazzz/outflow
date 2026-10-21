@@ -40,9 +40,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// La cabecera de cristal aparece cuando el título grande se va por arriba.
   bool _collapsed = false;
 
-  void _openSubscription(String id) => Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => SubscriptionDetailScreen(subscriptionId: id)),
-      );
+  void _openSubscription(String id) => openSubscriptionDetail(context, id);
 
   void _openSettings() => Navigator.of(context, rootNavigator: true).push(
         MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),

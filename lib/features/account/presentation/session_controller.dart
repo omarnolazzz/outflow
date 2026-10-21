@@ -95,6 +95,11 @@ class SessionController extends Notifier<SessionState> {
     _bioAvailable = await _bio.isAvailable();
     if (_bioAvailable) _bioLabel = await _bio.label();
     final account = _auth.current;
+    if (account != null) {
+      // La cuenta con sesión al actualizar pasa a ser la dueña de la wallet.
+      final repo = ref.read(walletSettingsRepositoryProvider);
+      if (repo.read().ownerUid == null) await repo.save(repo.read().copyWith(ownerUid: account.uid));
+    }
     state = account == null ? const SignedOut() : _after(account, lock: true);
   }
 
@@ -110,8 +115,24 @@ class SessionController extends Notifier<SessionState> {
   /// "Continuar con Google". Devuelve el mensaje a mostrar si falla
   /// (null si salió bien o el usuario cerró el selector).
   Future<String?> continueWithGoogle() async {
+    final s = state;
+    // La cuenta de vista previa no prueba quién es: para desbloquear se pide
+    // Face ID o el código del iPhone (si el dispositivo lo tiene).
+    if (s is Locked && !_auth.verifiesIdentity) {
+      if (_bioAvailable && !await _bio.authenticate('Desbloquea Outflow para ver tu wallet')) return null;
+      if (state is Locked) state = Ready(s.account);
+      return null;
+    }
     try {
       final account = await _auth.signInWithGoogle();
+      final repo = ref.read(walletSettingsRepositoryProvider);
+      final owner = repo.read().ownerUid ?? (s is Locked ? s.account.uid : null);
+      if (owner != null && owner != account.uid) {
+        // Otra cuenta no abre esta wallet.
+        await _auth.signOut();
+        return 'Esa no es la cuenta de esta wallet.';
+      }
+      if (owner == null) await repo.save(repo.read().copyWith(ownerUid: account.uid));
       state = _after(account, lock: false);
       return null;
     } on AuthOffline {

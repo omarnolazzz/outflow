@@ -32,9 +32,9 @@ import '../../domain/charge_pattern.dart';
 import '../../domain/entities/subscription.dart';
 import '../subscription_providers.dart';
 
-/// Abre la hoja de alta o edición de una suscripción.
+/// Abre la hoja de alta o edición de una suscripción (sobre la barra de pestañas).
 Future<void> showSubscriptionEditor(BuildContext context, {Merchant? merchant, Subscription? editing}) =>
-    Navigator.of(context).push(MaterialPageRoute<void>(
+    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(
       fullscreenDialog: true,
       builder: (_) => SubscriptionEditorSheet(merchant: merchant, editing: editing),
     ));
@@ -130,6 +130,7 @@ class _SubscriptionEditorSheetState extends ConsumerState<SubscriptionEditorShee
 
   Future<void> _pickFrequency() => showModalBottomSheet<void>(
         context: context,
+        useRootNavigator: true,
         builder: (context) => StatefulBuilder(
           builder: (context, setSheet) {
             void update(VoidCallback f) {
@@ -176,6 +177,7 @@ class _SubscriptionEditorSheetState extends ConsumerState<SubscriptionEditorShee
 
   Future<void> _pickReminder() => showModalBottomSheet<void>(
         context: context,
+        useRootNavigator: true,
         isScrollControlled: true,
         builder: (context) => StatefulBuilder(
           builder: (context, setSheet) {

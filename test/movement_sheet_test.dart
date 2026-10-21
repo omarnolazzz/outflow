@@ -42,6 +42,28 @@ void main() {
       expect(settings.read().deletedChargeIds, isEmpty);
     });
 
+    test('dropCharge borra el gasto del cobro y lo recuerda; deshacer lo devuelve', () async {
+      final m = Movement(
+        id: 'sub:nf:2026-10-18',
+        kind: MovementKind.expense,
+        amount: const Money(2990, 'PEN'),
+        categoryId: kSubscriptionsCategoryId,
+        date: DateTime(2026, 10, 18),
+        createdAt: DateTime(2026, 10, 18),
+        origin: MovementOrigin.subscription,
+        subscriptionId: 'nf',
+        provisional: true,
+      );
+      final movements = MemoryMovements([m]);
+      final settings = MemorySettings();
+      final actions = WalletActions(movements, settings);
+      final dropped = await actions.dropCharge('nf', DateTime(2026, 10, 18));
+      expect(movements.saved, isEmpty);
+      expect(settings.read().deletedChargeIds, {m.id});
+      await actions.restore(dropped!);
+      expect(movements.saved.single.id, m.id);
+    });
+
     test('borrar un gasto manual no toca los cobros borrados', () async {
       final m = Movement(
         id: 'x',

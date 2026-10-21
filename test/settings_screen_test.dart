@@ -15,6 +15,8 @@ import 'support/fakes.dart';
 
 class _Auth implements AuthService {
   @override
+  bool get verifiesIdentity => true;
+  @override
   Account? current = const Account(uid: 'u', email: 'g@example.com', displayName: 'Gabriel Nolazco');
   int signOuts = 0;
   @override

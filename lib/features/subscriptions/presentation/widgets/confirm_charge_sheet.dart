@@ -17,6 +17,7 @@ import '../../../merchants/presentation/widgets/merchant_avatar.dart';
 import '../../domain/charge_pattern.dart';
 import '../../domain/charge_schedule.dart';
 import '../../domain/entities/subscription.dart';
+import '../../../wallet/presentation/wallet_providers.dart';
 import '../subscription_providers.dart';
 
 /// Abre la pregunta detallada del cobro [pending] y aplica la respuesta,
@@ -29,6 +30,7 @@ Future<void> showConfirmChargeSheet(
 ) async {
   final result = await showModalBottomSheet<_SheetResult>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     builder: (_) => _ConfirmChargeSheet(subscription: s, pending: pending),
   );
@@ -60,6 +62,9 @@ Future<void> _applyResult(
   if (result.cancelled) {
     HapticFeedback.mediumImpact();
     final previous = await actions.cancelAfterCharge(s, pending, wasCharged: result.wasCharged);
+    final wallet = ref.read(walletActionsProvider);
+    // "No me cobraron": ese cobro deja de contar como gasto.
+    final dropped = result.wasCharged ? null : await wallet.dropCharge(s.id, pending);
     messenger.showSnackBar(
       SnackBar(
         content: Text(
@@ -67,7 +72,13 @@ Future<void> _applyResult(
               ? 'Cancelada. El último cobro cuenta como gasto.'
               : 'Cancelada a tiempo. Ya no recibirás avisos.',
         ),
-        action: SnackBarAction(label: 'Deshacer', onPressed: () => actions.save(previous)),
+        action: SnackBarAction(
+          label: 'Deshacer',
+          onPressed: () {
+            actions.save(previous);
+            if (dropped != null) wallet.restore(dropped);
+          },
+        ),
       ),
     );
     return;

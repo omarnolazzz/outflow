@@ -26,6 +26,13 @@ import '../widgets/confirm_charge_sheet.dart';
 import '../widgets/subscription_editor_sheet.dart';
 import '../widgets/subscription_tile.dart';
 
+/// Abre el detalle de una suscripción sobre la barra de pestañas (en el
+/// navegador raíz), para que la barra no tape sus botones ni sus hojas.
+Future<void> openSubscriptionDetail(BuildContext context, String id, {bool heroLogo = false}) =>
+    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(
+      builder: (_) => SubscriptionDetailScreen(subscriptionId: id, heroLogo: heroLogo),
+    ));
+
 class SubscriptionDetailScreen extends ConsumerWidget {
   const SubscriptionDetailScreen({super.key, required this.subscriptionId, this.heroLogo = false});
 
@@ -120,6 +127,7 @@ class _DetailBody extends ConsumerWidget {
     final global = ref.read(globalRuleProvider).value;
     final result = await showModalBottomSheet<RuleSheetResult>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       builder: (_) => SubscriptionRuleSheet(subscription: subscription, globalRule: global),
     );
@@ -185,9 +193,12 @@ class _DetailBody extends ConsumerWidget {
               ),
               if (next != null) ...[
                 const SizedBox(width: 8),
-                Text(
-                  'Próximo cobro ${Fmt.relativeDays(next.difference(dateOnly(now)).inDays).toLowerCase()}',
-                  style: AppType.footnote,
+                Flexible(
+                  child: Text(
+                    'Próximo cobro ${Fmt.relativeDays(next.difference(dateOnly(now)).inDays).toLowerCase()}',
+                    style: AppType.footnote,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ],
@@ -346,9 +357,10 @@ class _Row extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: AppType.body),
+              Flexible(flex: 2, child: Text(label, style: AppType.body)),
               const SizedBox(width: 16),
               Expanded(
+                flex: 3,
                 child: Text(value, textAlign: TextAlign.right, style: AppType.body.copyWith(color: AppColors.inkSecondary)),
               ),
               if (onTap != null) ...[

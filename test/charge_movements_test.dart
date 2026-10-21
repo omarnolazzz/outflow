@@ -161,12 +161,15 @@ void main() {
       expect(out.single.provisional, isTrue);
     });
 
-    test('"No, la cancelé a tiempo" borra el gasto', () {
+    test('"No, la cancelé a tiempo" limpia la pregunta; el borrado lo hace la wallet (dropCharge)', () {
       final created = run([netflix()], const []);
       final cancelled = applyChargeAnswer(netflix(), answer, now)!;
       final resolved = cancelled.resolveCancelQuestion(wasCharged: false);
       expect(resolved.cancelQuestionCharge, isNull);
-      expect(run([resolved], created), isEmpty);
+      // Sin respuesta explícita sobre ese cobro, la conciliación no lo toca;
+      // la acción "no me cobraron" lo borra y lo recuerda en deletedChargeIds.
+      final dropped = settings.copyWith(deletedChargeIds: {created.single.id});
+      expect(run([resolved], const [], s: dropped), isEmpty);
     });
 
     test('"Sí, me cobraron" confirma el gasto', () {
@@ -186,7 +189,46 @@ void main() {
     expect(charged.status, SubscriptionStatus.cancelled);
     expect(run([charged], created).single.provisional, isFalse);
     final notCharged = netflix().cancelAfterCharge(pending, wasCharged: false, now: now);
-    expect(run([notCharged], created), isEmpty);
+    expect(run([notCharged], created).single.provisional, isTrue, reason: 'lo borra dropCharge, no la conciliación');
+  });
+
+  test('un cambio de precio no reescribe cobros confirmados', () {
+    final confirmed = netflix().confirmCharge(
+      pending: DateTime(2026, 10, 18),
+      chargedOn: DateTime(2026, 10, 18),
+      next: DateTime(2026, 11, 18),
+    );
+    final created = run([confirmed], const []);
+    expect(created.single.provisional, isFalse);
+    final repriced = run([confirmed.copyWith(price: const Money(3490, 'PEN'))], created);
+    expect(repriced.single.amount, const Money(2990, 'PEN'));
+  });
+
+  test('pausar no borra un cobro pasado sin responder', () {
+    final created = run([netflix(anchor: DateTime(2026, 10, 5))], const []);
+    expect(created.single.id, 'sub:nf:2026-10-05');
+    final paused = netflix(anchor: DateTime(2026, 10, 5), status: SubscriptionStatus.paused);
+    expect(run([paused], created).map((m) => m.id), ['sub:nf:2026-10-05']);
+  });
+
+  test('cambiar "Se renueva el" no borra un cobro pasado sin responder', () {
+    final created = run([netflix(anchor: DateTime(2026, 10, 5))], const []);
+    final moved = netflix(anchor: DateTime(2026, 10, 25));
+    expect(run([moved], created).map((m) => m.id), ['sub:nf:2026-10-05']);
+  });
+
+  test('un provisional editado a mano se mueve al confirmar otra fecha, con su importe y sin duplicarse', () {
+    final created = run([netflix()], const []);
+    final edited = [created.single.copyWith(amount: const Money(3100, 'PEN'), userEdited: true)];
+    final confirmed = netflix().confirmCharge(
+      pending: DateTime(2026, 10, 18),
+      chargedOn: DateTime(2026, 10, 19),
+      next: DateTime(2026, 11, 19),
+    );
+    final after = run([confirmed], edited);
+    expect(after.map((m) => m.id), ['sub:nf:2026-10-19']);
+    expect(after.single.amount, const Money(3100, 'PEN'));
+    expect(after.single.userEdited, isTrue);
   });
 
   test('cancelQuestionCharge sobrevive a JSON', () {

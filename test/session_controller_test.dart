@@ -17,11 +17,17 @@ class FakeAuth implements AuthService {
   AuthException? failWith;
   int signIns = 0;
 
+  /// Cuenta que devolverá el selector de Google (por defecto, la misma).
+  Account next = gabriel;
+
+  @override
+  bool verifiesIdentity = true;
+
   @override
   Future<Account> signInWithGoogle() async {
     signIns++;
     if (failWith != null) throw failWith!;
-    return current = gabriel;
+    return current = next;
   }
 
   @override
@@ -157,6 +163,30 @@ void main() {
     expect(c.read(sessionControllerProvider), isA<Ready>());
     ctrl.lock();
     expect(c.read(sessionControllerProvider), isA<Locked>());
+  });
+
+  test('desde el bloqueo, otra cuenta de Google no abre la wallet', () async {
+    auth.current = gabriel;
+    settings.value = const WalletSettings(onboardingDone: true);
+    final c = await start();
+    auth.next = const Account(uid: 'otro', email: 'otro@example.com', displayName: 'Otro');
+    final error = await c.read(sessionControllerProvider.notifier).continueWithGoogle();
+    expect(error, 'Esa no es la cuenta de esta wallet.');
+    expect(c.read(sessionControllerProvider), isA<Locked>());
+    expect((c.read(sessionControllerProvider) as Locked).account.uid, 'u1');
+  });
+
+  test('con la cuenta de vista previa, desbloquear exige Face ID o el código del iPhone', () async {
+    auth.current = gabriel;
+    auth.verifiesIdentity = false;
+    settings.value = const WalletSettings(onboardingDone: true);
+    final c = await start();
+    bio.result = false;
+    await c.read(sessionControllerProvider.notifier).continueWithGoogle();
+    expect(c.read(sessionControllerProvider), isA<Locked>());
+    bio.result = true;
+    await c.read(sessionControllerProvider.notifier).continueWithGoogle();
+    expect(c.read(sessionControllerProvider), isA<Ready>());
   });
 
   test('cerrar sesión vuelve a SignedOut', () async {

@@ -17,6 +17,8 @@ import 'package:outflow/features/wallet/domain/movement.dart';
 import 'package:outflow/features/wallet/domain/wallet_settings.dart';
 import 'package:outflow/features/wallet/presentation/wallet_providers.dart';
 
+import 'support/fakes.dart';
+
 Movement mv(String id, MovementKind kind, int major, DateTime date, {String title = '', String cat = 'food'}) =>
     Movement(id: id, kind: kind, amount: Money(major * 100, 'PEN'), categoryId: cat, date: date, createdAt: date, title: title);
 
@@ -51,6 +53,7 @@ class RecordingActions extends SubscriptionActions {
 
 void main() {
   final now = DateTime(2026, 10, 20, 10);
+  late MemorySettings walletSettings;
 
   Future<RecordingActions> pump(
     WidgetTester tester, {
@@ -58,8 +61,10 @@ void main() {
     List<Subscription> subs = const [],
   }) async {
     final actions = RecordingActions(_NoRepo());
+    walletSettings = MemorySettings(WalletSettings(walletStartedAt: DateTime(2026, 10, 1)));
     final container = ProviderContainer(overrides: [
       subscriptionActionsProvider.overrideWithValue(actions),
+      walletActionsProvider.overrideWithValue(WalletActions(MemoryMovements(movements), walletSettings)),
       nowProvider.overrideWithValue(now),
       movementsProvider.overrideWith((ref) => Stream.value(movements)),
       subscriptionsProvider.overrideWith((ref) => Stream.value(subs)),
@@ -104,6 +109,7 @@ void main() {
     await tester.tap(find.text('No, la cancelé a tiempo'));
     await tester.pumpAndSettle();
     expect(actions.calls, ['resolve:false']);
+    expect(walletSettings.read().deletedChargeIds, {'sub:nf:2026-10-18'});
   });
 
   testWidgets('el próximo cobro aparece debajo de la wallet', (tester) async {

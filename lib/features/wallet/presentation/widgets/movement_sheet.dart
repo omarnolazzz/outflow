@@ -113,7 +113,8 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
             date: when,
             title: _isCharge ? null : _title.text.trim(),
             note: _note.text.trim(),
-            userEdited: _isCharge ? true : null,
+            // Solo un importe cambiado a mano protege el cobro de los cambios de precio.
+            userEdited: _isCharge && money != _e!.amount ? true : null,
           );
     await ref.read(walletActionsProvider).save(movement);
     HapticFeedback.mediumImpact();

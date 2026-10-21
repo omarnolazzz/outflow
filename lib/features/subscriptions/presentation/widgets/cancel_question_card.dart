@@ -8,6 +8,7 @@ import '../../../../core/widgets/surface_card.dart';
 import '../../../merchants/domain/entities/merchant.dart';
 import '../../../merchants/presentation/widgets/merchant_avatar.dart';
 import '../../domain/entities/subscription.dart';
+import '../../../wallet/presentation/wallet_providers.dart';
 import '../subscription_providers.dart';
 
 /// Tras "Ya la cancelé" en la notificación: ¿llegó a cobrarse este mes?
@@ -19,13 +20,23 @@ class CancelQuestionCard extends ConsumerWidget {
 
   Future<void> _answer(BuildContext context, WidgetRef ref, bool wasCharged) async {
     final actions = ref.read(subscriptionActionsProvider);
+    final wallet = ref.read(walletActionsProvider);
     final messenger = ScaffoldMessenger.maybeOf(context);
+    final charge = subscription.cancelQuestionCharge!;
     final previous = await actions.resolveCancelQuestion(subscription, wasCharged: wasCharged);
+    // "No me cobraron": ese cobro deja de contar como gasto.
+    final dropped = wasCharged ? null : await wallet.dropCharge(subscription.id, charge);
     messenger
       ?..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(
         content: Text(wasCharged ? 'Guardado: el cobro cuenta como gasto.' : 'Quitado de tus gastos.'),
-        action: SnackBarAction(label: 'Deshacer', onPressed: () => actions.save(previous)),
+        action: SnackBarAction(
+          label: 'Deshacer',
+          onPressed: () {
+            actions.save(previous);
+            if (dropped != null) wallet.restore(dropped);
+          },
+        ),
       ));
   }
 

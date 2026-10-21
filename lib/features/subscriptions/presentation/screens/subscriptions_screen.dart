@@ -34,9 +34,7 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> {
   DateTime? _month;
   DateTime? _day;
 
-  void _open(Subscription s) => Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => SubscriptionDetailScreen(subscriptionId: s.id, heroLogo: true),
-      ));
+  void _open(Subscription s) => openSubscriptionDetail(context, s.id, heroLogo: true);
 
   void _add() => Navigator.of(context, rootNavigator: true).push(
         MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => const CatalogScreen()),

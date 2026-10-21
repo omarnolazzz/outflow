@@ -10,6 +10,7 @@ class WalletSettings {
     this.onboardingDone = false,
     this.faceIdEnabled = false,
     this.deletedChargeIds = const {},
+    this.ownerUid,
   });
 
   /// Moneda principal: la única que suma en la wallet.
@@ -26,6 +27,9 @@ class WalletSettings {
   /// Cobros de suscripción que el usuario borró: no se vuelven a crear.
   final Set<String> deletedChargeIds;
 
+  /// Cuenta de Google dueña de esta wallet: otra cuenta no la abre.
+  final String? ownerUid;
+
   WalletSettings copyWith({
     String? currency,
     bool? carryOver,
@@ -33,6 +37,7 @@ class WalletSettings {
     bool? onboardingDone,
     bool? faceIdEnabled,
     Set<String>? deletedChargeIds,
+    String? ownerUid,
   }) =>
       WalletSettings(
         currency: currency ?? this.currency,
@@ -41,6 +46,7 @@ class WalletSettings {
         onboardingDone: onboardingDone ?? this.onboardingDone,
         faceIdEnabled: faceIdEnabled ?? this.faceIdEnabled,
         deletedChargeIds: deletedChargeIds ?? this.deletedChargeIds,
+        ownerUid: ownerUid ?? this.ownerUid,
       );
 
   Map<String, Object?> toJson() => {
@@ -50,6 +56,7 @@ class WalletSettings {
         'onboardingDone': onboardingDone,
         'faceIdEnabled': faceIdEnabled,
         'deletedChargeIds': (deletedChargeIds.toList()..sort()),
+        'ownerUid': ownerUid,
       };
 
   factory WalletSettings.fromJson(Map<String, Object?> json) {
@@ -61,6 +68,7 @@ class WalletSettings {
       onboardingDone: json['onboardingDone'] as bool? ?? false,
       faceIdEnabled: json['faceIdEnabled'] as bool? ?? false,
       deletedChargeIds: {...?(json['deletedChargeIds'] as List?)?.cast<String>()},
+      ownerUid: json['ownerUid'] as String?,
     );
   }
 }

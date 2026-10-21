@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/core_providers.dart';
+import '../../../core/domain/billing_cycle.dart';
 import '../../subscriptions/presentation/subscription_providers.dart';
 import '../data/hive_category_repository.dart';
 import '../data/hive_movement_repository.dart';
@@ -105,6 +106,18 @@ class WalletActions {
       await _settings.save(s.copyWith(deletedChargeIds: {...s.deletedChargeIds, id}));
     }
     await _movements.delete(id);
+    return m;
+  }
+
+  /// "No me cobraron": quita el gasto del cobro [date] de la suscripción y lo
+  /// recuerda para no recrearlo. Devuelve el borrado (para Deshacer).
+  Future<Movement?> dropCharge(String subscriptionId, DateTime date) async {
+    final id = chargeMovementId(subscriptionId, dateOnly(date));
+    final s = _settings.read();
+    await _settings.save(s.copyWith(deletedChargeIds: {...s.deletedChargeIds, id}));
+    final all = await _movements.watchAll().first;
+    final m = all.where((x) => x.id == id).firstOrNull;
+    if (m != null) await _movements.delete(id);
     return m;
   }
 

@@ -60,37 +60,56 @@ ChargeMovementChanges reconcileChargeMovements({
     final q = s.cancelQuestionCharge;
     if (q != null && inRange(dateOnly(q))) occurrences.putIfAbsent(dateOnly(q), () => true);
 
-    final ids = <String>{};
+    final ids = {for (final d in occurrences.keys) chargeMovementId(s.id, d)};
+
+    // Provisionales que ya no son cobros. Solo se borran si una respuesta los
+    // sustituyó (hay un cobro del historial desde 20 días antes, el margen con
+    // el que se corrige la fecha real) o si aún no han llegado. Pausar,
+    // cancelar o cambiar la fecha no borra lo que ya pasó sin respuesta.
+    final superseded = <Movement>[];
+    for (final m in byId.values) {
+      if (m.subscriptionId != s.id || ids.contains(m.id) || !m.provisional) continue;
+      final d = dateOnly(m.date);
+      final answered = s.chargeHistory.any((r) => !r.date.isBefore(d.subtract(const Duration(days: 20))));
+      if (d.isAfter(today) || answered) {
+        delete.add(m.id);
+        superseded.add(m);
+      }
+    }
+
     for (final MapEntry(key: date, value: provisional) in occurrences.entries) {
       final id = chargeMovementId(s.id, date);
-      ids.add(id);
       if (settings.deletedChargeIds.contains(id)) continue;
       final current = byId[id];
       if (current == null) {
+        // Si sustituye a un provisional editado a mano, hereda su importe y nota.
+        final edited = superseded
+            .where((m) => m.userEdited && !m.date.isAfter(date.add(const Duration(days: 20))))
+            .firstOrNull;
         upsert.add(Movement(
           id: id,
           kind: MovementKind.expense,
-          amount: s.price,
+          amount: edited?.amount ?? s.price,
           categoryId: kSubscriptionsCategoryId,
           date: date,
           title: s.name,
+          note: edited?.note ?? '',
           origin: MovementOrigin.subscription,
           subscriptionId: s.id,
           provisional: provisional,
+          userEdited: edited != null,
           createdAt: now,
         ));
+        if (edited != null) superseded.remove(edited);
         continue;
       }
-      final desired = current.userEdited
-          ? current.copyWith(provisional: provisional)
-          : current.copyWith(provisional: provisional, amount: s.price, title: s.name);
+      // Solo un cobro aún previsto sigue el precio actual; uno confirmado o
+      // editado a mano conserva su importe.
+      final followPrice = current.provisional && provisional && !current.userEdited;
+      final desired = followPrice
+          ? current.copyWith(provisional: provisional, amount: s.price, title: s.name)
+          : current.copyWith(provisional: provisional);
       if (!_same(desired, current)) upsert.add(desired);
-    }
-
-    for (final m in byId.values) {
-      if (m.subscriptionId == s.id && !ids.contains(m.id) && m.provisional && !m.userEdited) {
-        delete.add(m.id);
-      }
     }
   }
   return (upsert: upsert, delete: delete);

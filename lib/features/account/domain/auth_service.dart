@@ -24,6 +24,9 @@ abstract interface class AuthService {
   /// Sesión guardada en el dispositivo (null si no hay).
   Account? get current;
 
+  /// false en la cuenta de vista previa: no prueba quién es el usuario.
+  bool get verifiesIdentity;
+
   /// "Continuar con Google". Lanza [AuthException].
   Future<Account> signInWithGoogle();
   Future<void> signOut();

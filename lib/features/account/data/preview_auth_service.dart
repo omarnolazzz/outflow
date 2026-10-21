@@ -13,6 +13,9 @@ class PreviewAuthService implements AuthService {
   static const _demo = Account(uid: 'preview', email: 'vista.previa@outflow.app', displayName: 'Vista previa');
 
   @override
+  bool get verifiesIdentity => false;
+
+  @override
   Account? get current => _store.read(LocalStore.settingsBox, _id) == null ? null : _demo;
 
   @override

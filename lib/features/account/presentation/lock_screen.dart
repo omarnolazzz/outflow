@@ -29,9 +29,6 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   _Busy _busy = _Busy.none;
   String? _error;
 
-  /// Sin red y sin Face ID: el código del iPhone como salida.
-  bool _offerPasscode = false;
-
   SessionController get _session => ref.read(sessionControllerProvider.notifier);
 
   Future<void> _faceId() async {
@@ -55,7 +52,6 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     setState(() {
       _busy = _Busy.none;
       _error = error;
-      _offerPasscode = error == 'Sin conexión' && !widget.state.faceId;
     });
   }
 
@@ -114,7 +110,8 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                   onTap: _busy == _Busy.none ? _google : null,
                 ),
               ),
-              if (_offerPasscode) ...[
+              // Sin Face ID activado, el código del iPhone siempre sirve (también sin red).
+              if (!widget.state.faceId) ...[
                 const SizedBox(height: 12),
                 Pressable(
                   onTap: _faceId,
