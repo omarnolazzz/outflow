@@ -7,9 +7,9 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../../core/motion/motion_widgets.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../core/widgets/notion_widgets.dart';
+import '../../../../core/widgets/status_pill.dart';
 import '../../../../core/widgets/pressable.dart';
-import '../../../subscriptions/presentation/screens/subscription_form_screen.dart';
+import '../../../subscriptions/presentation/widgets/subscription_editor_sheet.dart';
 import '../../domain/entities/merchant.dart';
 import '../merchant_providers.dart';
 import '../widgets/merchant_avatar.dart';
@@ -17,7 +17,10 @@ import 'create_merchant_screen.dart';
 
 /// Paso 1 de "Nueva suscripción": elegir el comercio.
 class CatalogScreen extends ConsumerStatefulWidget {
-  const CatalogScreen({super.key});
+  const CatalogScreen({super.key, this.pickOnly = false});
+
+  /// Solo elegir el comercio y devolverlo (cambiar el de una suscripción).
+  final bool pickOnly;
 
   @override
   ConsumerState<CatalogScreen> createState() => _CatalogScreenState();
@@ -50,9 +53,9 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
     _settle = Timer(const Duration(milliseconds: 500), () => _staggering = false);
   }
 
-  void _pick(Merchant m) =>
-      Navigator.of(context)
-          .push(MaterialPageRoute<void>(builder: (_) => SubscriptionFormScreen.create(merchant: m)));
+  void _pick(Merchant m) => widget.pickOnly
+      ? Navigator.of(context).pop(m)
+      : Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SubscriptionEditorSheet(merchant: m)));
 
   void _createCustom() =>
       Navigator.of(context)
@@ -117,10 +120,11 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                           width: 36,
                           height: 36,
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: AppColors.border),
+                            shape: BoxShape.circle,
+                            color: AppColors.accentSoft,
+
                           ),
-                          child: const Icon(LucideIcons.plus, size: 18, color: AppColors.ink),
+                          child: const Icon(LucideIcons.plus, size: 18, color: AppColors.accent),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -172,7 +176,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
 
     return [
       SliverToBoxAdapter(
-        child: enter(first, SectionLabel(title, padding: const EdgeInsets.fromLTRB(20, 22, 20, 6))),
+        child: enter(first, SectionHeader(title)),
       ),
       SliverList.builder(
         itemCount: items.length,

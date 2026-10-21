@@ -26,6 +26,7 @@ import 'features/notifications/presentation/notification_providers.dart';
 import 'features/subscriptions/presentation/subscription_providers.dart';
 import 'features/home/presentation/home_screen.dart';
 import 'features/subscriptions/presentation/screens/subscription_detail_screen.dart';
+import 'features/subscriptions/presentation/screens/subscriptions_screen.dart';
 
 class OutflowApp extends ConsumerStatefulWidget {
   const OutflowApp({super.key});
@@ -158,7 +159,7 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
         pages: {
           AppTab.home: (_) => const HomeScreen(),
           AppTab.movements: (_) => const MovementsScreen(),
-          AppTab.subscriptions: (_) => const _Pending('Suscripciones'),
+          AppTab.subscriptions: (_) => const SubscriptionsScreen(),
           AppTab.summary: (_) => const _Pending('Resumen'),
         },
         onQuickAdd: _quickAdd,

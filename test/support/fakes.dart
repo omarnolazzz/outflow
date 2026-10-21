@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:outflow/features/subscriptions/domain/entities/subscription.dart';
+import 'package:outflow/features/subscriptions/domain/subscription_repository.dart';
 import 'package:outflow/features/wallet/data/hive_movement_repository.dart';
 import 'package:outflow/features/wallet/data/wallet_settings_repository.dart';
 import 'package:outflow/features/wallet/domain/movement.dart';
@@ -58,6 +60,35 @@ class MemoryMovements implements MovementRepository {
 
   @override
   Stream<List<Movement>> watchAll() async* {
+    yield saved;
+    yield* _c.stream;
+  }
+}
+
+/// Suscripciones en memoria.
+class MemorySubscriptions implements SubscriptionRepository {
+  MemorySubscriptions([List<Subscription> initial = const []]) : _items = {for (final s in initial) s.id: s};
+  final Map<String, Subscription> _items;
+  final _c = StreamController<List<Subscription>>.broadcast();
+
+  List<Subscription> get saved => _items.values.toList();
+
+  @override
+  Future<Subscription?> byId(String id) async => _items[id];
+  @override
+  Future<void> save(Subscription s) async {
+    _items[s.id] = s;
+    _c.add(saved);
+  }
+
+  @override
+  Future<void> delete(String id) async {
+    _items.remove(id);
+    _c.add(saved);
+  }
+
+  @override
+  Stream<List<Subscription>> watchAll() async* {
     yield saved;
     yield* _c.stream;
   }

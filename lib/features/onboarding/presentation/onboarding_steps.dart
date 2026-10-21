@@ -18,7 +18,7 @@ import '../../merchants/data/merchant_catalog.dart';
 import '../../merchants/presentation/widgets/merchant_avatar.dart';
 import '../../notifications/domain/notification_rule.dart';
 import '../../notifications/presentation/notification_providers.dart';
-import '../../subscriptions/presentation/screens/subscription_form_screen.dart';
+import '../../subscriptions/presentation/widgets/subscription_editor_sheet.dart';
 import '../../subscriptions/presentation/subscription_providers.dart';
 import 'onboarding_controller.dart';
 
@@ -225,7 +225,7 @@ class _SubscriptionsStep extends ConsumerWidget {
                   padding: const EdgeInsets.all(10),
                   onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
                     fullscreenDialog: true,
-                    builder: (_) => SubscriptionFormScreen.create(merchant: m),
+                    builder: (_) => SubscriptionEditorSheet(merchant: m),
                   )),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,

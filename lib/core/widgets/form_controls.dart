@@ -6,10 +6,10 @@ import '../motion/app_motion.dart';
 import '../motion/motion_widgets.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_typography.dart';
-import 'notion_widgets.dart';
+import '../utils/formatters.dart';
 import 'pressable.dart';
 
-/// Opción seleccionable tipo tag (categorías, etc.).
+/// Opción seleccionable en cápsula (categorías, método de pago…).
 class ChoiceTag extends StatelessWidget {
   const ChoiceTag({super.key, required this.label, required this.selected, required this.onTap});
   final String label;
@@ -22,21 +22,21 @@ class ChoiceTag extends StatelessWidget {
         haptic: true,
         highlight: false,
         scale: 0.95,
+        borderRadius: BorderRadius.circular(20),
         semanticLabel: label,
         child: SelectionPop(
           active: selected,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             curve: AppMotion.ease,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: selected ? AppColors.ink : AppColors.background,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: selected ? AppColors.ink : AppColors.border),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: ShapeDecoration(
+              color: selected ? AppColors.accent : AppColors.fill,
+              shape: const StadiumBorder(),
             ),
             child: AnimatedDefaultTextStyle(
               duration: const Duration(milliseconds: 200),
-              style: DefaultTextStyle.of(context).style.merge(AppType.caption.copyWith(
+              style: DefaultTextStyle.of(context).style.merge(AppType.footnote.copyWith(
                     color: selected ? AppColors.onAccent : AppColors.ink,
                     fontWeight: FontWeight.w500,
                   )),
@@ -47,6 +47,7 @@ class ChoiceTag extends StatelessWidget {
       );
 }
 
+/// Selector de moneda en cápsula ("S/ ▾").
 class CurrencyMenu extends StatelessWidget {
   const CurrencyMenu({super.key, required this.value, required this.onChanged});
   final String value;
@@ -57,21 +58,20 @@ class CurrencyMenu extends StatelessWidget {
         initialValue: value,
         onSelected: onChanged,
         tooltip: 'Moneda',
-        color: AppColors.background,
-        elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: const BorderSide(color: AppColors.border),
-        ),
+        color: AppColors.surface,
+        elevation: 6,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         itemBuilder: (_) => [
-          for (final c in kSupportedCurrencies) PopupMenuItem(value: c, child: Text(c, style: AppType.body)),
+          for (final c in kSupportedCurrencies)
+            PopupMenuItem(value: c, child: Text('${Fmt.symbol(c)}  $c', style: AppType.body)),
         ],
-        child: NotionBlock(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: const ShapeDecoration(color: AppColors.fill, shape: StadiumBorder()),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(value, style: AppType.bodyStrong),
+              Text(Fmt.symbol(value), style: AppType.headline),
               const SizedBox(width: 4),
               const Icon(LucideIcons.chevronDown, size: 14, color: AppColors.inkSecondary),
             ],
@@ -101,16 +101,17 @@ class CountStepper extends StatelessWidget {
           onTap: next == null ? null : () => onChanged(next),
           haptic: true,
           scale: 0.88,
+          borderRadius: BorderRadius.circular(18),
           semanticLabel: label,
           child: SizedBox(
-            width: 32,
+            width: 36,
             height: 36,
-            child: Icon(icon, size: 14, color: next == null ? AppColors.border : AppColors.ink),
+            child: Icon(icon, size: 16, color: next == null ? AppColors.inkTertiary : AppColors.ink),
           ),
         );
 
-    return NotionBlock(
-      padding: EdgeInsets.zero,
+    return Container(
+      decoration: const ShapeDecoration(color: AppColors.fill, shape: StadiumBorder()),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -173,7 +174,7 @@ class FieldLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text(text, style: AppType.section),
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+        child: Text(text, style: AppType.footnote.copyWith(fontWeight: FontWeight.w600)),
       );
 }

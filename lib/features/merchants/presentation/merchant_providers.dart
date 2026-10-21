@@ -18,3 +18,8 @@ final merchantIndexProvider = Provider<Map<String, Merchant>>((ref) {
   final list = ref.watch(merchantsProvider).value ?? const [];
   return {for (final m in list) m.id: m};
 });
+
+/// Comercio por id (null si no existe o no hay id).
+final merchantByIdProvider = Provider.family<Merchant?, String?>(
+  (ref, id) => id == null ? null : ref.watch(merchantIndexProvider)[id],
+);

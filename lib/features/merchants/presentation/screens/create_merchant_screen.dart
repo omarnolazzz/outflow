@@ -12,10 +12,10 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/form_controls.dart';
 import '../../../../core/widgets/line_icons.dart';
-import '../../../../core/widgets/notion_widgets.dart';
+import '../../../../core/widgets/segmented_control.dart';
+import '../../../../core/widgets/status_pill.dart';
 import '../../../../core/widgets/pressable.dart';
-import '../../../../core/widgets/segmented.dart';
-import '../../../subscriptions/presentation/screens/subscription_form_screen.dart';
+import '../../../subscriptions/presentation/widgets/subscription_editor_sheet.dart';
 import '../../data/logo_picker.dart';
 import '../../domain/entities/merchant.dart';
 import '../merchant_providers.dart';
@@ -122,7 +122,7 @@ class _CreateMerchantScreenState extends ConsumerState<CreateMerchantScreen> {
     if (!mounted) return;
     // Continúa directamente al formulario de la suscripción con este comercio.
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => SubscriptionFormScreen.create(merchant: merchant)),
+      MaterialPageRoute<void>(builder: (_) => SubscriptionEditorSheet(merchant: merchant)),
     );
   }
 
@@ -144,7 +144,7 @@ class _CreateMerchantScreenState extends ConsumerState<CreateMerchantScreen> {
             child: AnimatedOpacity(
               opacity: _valid ? 1 : 0.4,
               duration: AppMotion.short,
-              child: OutlineAction(label: 'Continuar', filled: true, onTap: _valid ? _save : null),
+              child: PillButton(label: 'Continuar', filled: true, onTap: _valid ? _save : null),
             ),
           ),
         ],
@@ -186,11 +186,16 @@ class _CreateMerchantScreenState extends ConsumerState<CreateMerchantScreen> {
             ],
           ),
           const SizedBox(height: 20),
-          Text('Logo', style: AppType.section),
+          Text('Logo', style: AppType.footnote.copyWith(fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
-          NotionSegmented<_LogoMode>(
-            value: _mode,
-            options: const {_LogoMode.image: 'Imagen', _LogoMode.emoji: 'Emoji', _LogoMode.icon: 'Icono'},
+          SegmentedControl<_LogoMode>(
+            values: const [_LogoMode.image, _LogoMode.emoji, _LogoMode.icon],
+            selected: _mode,
+            label: (m) => switch (m) {
+              _LogoMode.image => 'Imagen',
+              _LogoMode.emoji => 'Emoji',
+              _LogoMode.icon => 'Icono',
+            },
             onChanged: (m) => setState(() => _mode = m),
           ),
           const SizedBox(height: 12),
@@ -232,7 +237,7 @@ class _CreateMerchantScreenState extends ConsumerState<CreateMerchantScreen> {
             ],
           ),
           const SizedBox(height: 24),
-          Text('Reglas de cobro por defecto', style: AppType.section),
+          Text('Reglas de cobro por defecto', style: AppType.footnote.copyWith(fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
           Text('Se precargan al registrar una suscripción de este comercio.', style: AppType.caption),
           const SizedBox(height: 12),
@@ -243,9 +248,14 @@ class _CreateMerchantScreenState extends ConsumerState<CreateMerchantScreen> {
               CountStepper(value: _every, onChanged: (v) => setState(() => _every = v)),
               const SizedBox(width: 10),
               Expanded(
-                child: NotionSegmented<CycleUnit>(
-                  value: _unit,
-                  options: const {CycleUnit.week: 'Semana', CycleUnit.month: 'Mes', CycleUnit.year: 'Año'},
+                child: SegmentedControl<CycleUnit>(
+                  values: const [CycleUnit.week, CycleUnit.month, CycleUnit.year],
+                  selected: _unit == CycleUnit.day ? CycleUnit.week : _unit,
+                  label: (u) => switch (u) {
+                    CycleUnit.week => 'Semana',
+                    CycleUnit.month => 'Mes',
+                    _ => 'Año',
+                  },
                   onChanged: (u) => setState(() => _unit = u),
                 ),
               ),

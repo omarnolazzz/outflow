@@ -40,3 +40,8 @@ final reminderSyncProvider = Provider<void>((ref) {
     debugPrint('No se pudieron programar los avisos: $e');
   });
 });
+
+/// Pide permiso de avisos (inyectable para pruebas).
+final requestNotificationPermissionProvider = Provider<Future<bool> Function()>(
+  (ref) => () => ref.read(notificationServiceProvider).requestPermission(),
+);

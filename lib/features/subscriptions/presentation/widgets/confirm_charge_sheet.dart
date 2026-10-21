@@ -9,7 +9,7 @@ import '../../../../core/motion/motion_widgets.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/utils/formatters.dart';
-import '../../../../core/widgets/notion_widgets.dart';
+import '../../../../core/widgets/primary_button.dart';
 import '../../../../core/widgets/pressable.dart';
 import '../../../merchants/domain/entities/merchant.dart';
 import '../../../merchants/presentation/merchant_providers.dart';
@@ -59,10 +59,14 @@ Future<void> _applyResult(
   final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
   if (result.cancelled) {
     HapticFeedback.mediumImpact();
-    final previous = await actions.setStatus(s, SubscriptionStatus.cancelled);
+    final previous = await actions.cancelAfterCharge(s, pending, wasCharged: result.wasCharged);
     messenger.showSnackBar(
       SnackBar(
-        content: const Text('Marcada como cancelada. Ya no recibirás avisos.'),
+        content: Text(
+          result.wasCharged
+              ? 'Cancelada. El último cobro cuenta como gasto.'
+              : 'Cancelada a tiempo. Ya no recibirás avisos.',
+        ),
         action: SnackBarAction(label: 'Deshacer', onPressed: () => actions.save(previous)),
       ),
     );
@@ -86,13 +90,21 @@ Future<void> _applyResult(
 
 class _SheetResult {
   const _SheetResult({required DateTime this.chargedOn, required DateTime this.next, this.pattern})
-    : cancelled = false;
-  const _SheetResult.cancelled() : chargedOn = null, next = null, pattern = null, cancelled = true;
+    : cancelled = false,
+      wasCharged = true;
+  const _SheetResult.cancelled({required this.wasCharged})
+      : chargedOn = null,
+        next = null,
+        pattern = null,
+        cancelled = true;
 
   final DateTime? chargedOn;
   final DateTime? next;
   final ChargePattern? pattern;
   final bool cancelled;
+
+  /// Al cancelar: ¿llegó a cobrarse este último cobro?
+  final bool wasCharged;
 }
 
 class _ConfirmChargeSheet extends ConsumerStatefulWidget {
@@ -110,6 +122,9 @@ class _ConfirmChargeSheetState extends ConsumerState<_ConfirmChargeSheet> {
   /// Índice de la sugerencia elegida, o null si se eligió una fecha propia.
   int? _selected = 0;
   DateTime? _custom;
+
+  /// Tras "Ya la cancelé": falta saber si el último cobro llegó a pasar.
+  bool _askingCancel = false;
 
   Subscription get _s => widget.subscription;
   List<ChargeSuggestion> get _suggestions => suggestNext(_s, _chargedOn);
@@ -167,6 +182,8 @@ class _ConfirmChargeSheetState extends ConsumerState<_ConfirmChargeSheet> {
     var order = 0;
     Widget e(Widget child) => Entrance(index: order++, child: child);
 
+    if (_askingCancel) return _CancelQuestion(name: _s.name);
+
     return SafeArea(
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(20, 0, 20, MediaQuery.viewInsetsOf(context).bottom + 16),
@@ -182,19 +199,22 @@ class _ConfirmChargeSheetState extends ConsumerState<_ConfirmChargeSheet> {
                     size: 40,
                   ),
                   const SizedBox(width: 12),
-                  Expanded(child: Text('Confirma el cobro de ${_s.name}', style: AppType.headline)),
+                  Expanded(child: Text('Confirma el cobro de ${_s.name}', style: AppType.title2)),
                 ],
               ),
             ),
             const SizedBox(height: 20),
-            e(Text('¿Cuándo se cobró?', style: AppType.section)),
+            e(Text('¿Cuándo se cobró?', style: AppType.footnote.copyWith(fontWeight: FontWeight.w600))),
             const SizedBox(height: 8),
             e(
               Pressable(
                 onTap: _pickChargedOn,
-                child: NotionBlock(
-                  color: AppColors.surfaceMuted,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  decoration: ShapeDecoration(
+                    color: AppColors.fill,
+                    shape: RoundedSuperellipseBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
                   child: Row(
                     children: [
                       const Icon(LucideIcons.calendarCheck, size: 16, color: AppColors.inkTertiary),
@@ -218,7 +238,7 @@ class _ConfirmChargeSheetState extends ConsumerState<_ConfirmChargeSheet> {
               ),
             ),
             const SizedBox(height: 20),
-            e(Text('¿Cuándo será el próximo?', style: AppType.section)),
+            e(Text('¿Cuándo será el próximo?', style: AppType.footnote.copyWith(fontWeight: FontWeight.w600))),
             const SizedBox(height: 8),
             for (var i = 0; i < suggestions.length; i++)
               e(
@@ -239,23 +259,14 @@ class _ConfirmChargeSheetState extends ConsumerState<_ConfirmChargeSheet> {
               ),
             ),
             const SizedBox(height: 20),
+            e(PrimaryButton(label: 'Confirmar', onTap: _next == null ? null : _confirm)),
+            const SizedBox(height: 4),
             e(
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlineAction(
-                      label: 'Confirmar',
-                      filled: true,
-                      onTap: _next == null ? null : _confirm,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  OutlineAction(
-                    label: 'Ya la cancelé',
-                    danger: true,
-                    onTap: () => Navigator.pop(context, const _SheetResult.cancelled()),
-                  ),
-                ],
+              Center(
+                child: TextButton(
+                  onPressed: () => setState(() => _askingCancel = true),
+                  child: Text('Ya la cancelé', style: AppType.callout.copyWith(color: AppColors.danger, fontWeight: FontWeight.w600)),
+                ),
               ),
             ),
           ],
@@ -296,9 +307,9 @@ class _OptionTile extends StatelessWidget {
         curve: AppMotion.ease,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
         decoration: BoxDecoration(
-          color: selected ? AppColors.callout : AppColors.background,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: selected ? AppColors.ink : AppColors.border, width: selected ? 1.5 : 1),
+          color: selected ? AppColors.accentSoft : AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: selected ? AppColors.accent : AppColors.separator, width: selected ? 1.5 : 1),
         ),
         child: Row(
           children: [
@@ -312,7 +323,7 @@ class _OptionTile extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: selected ? AppColors.ink : AppColors.border,
+                    color: selected ? AppColors.accent : AppColors.separator,
                     width: selected ? 5.5 : 1.5,
                   ),
                 ),
@@ -334,4 +345,49 @@ class _OptionTile extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// Segundo paso de "Ya la cancelé": ¿llegó a cobrarse el último cobro?
+class _CancelQuestion extends StatelessWidget {
+  const _CancelQuestion({required this.name});
+  final String name;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Entrance(child: Text('¿Te llegaron a cobrar este mes?', style: AppType.title2)),
+              const SizedBox(height: 6),
+              Entrance(
+                index: 1,
+                child: Text(
+                  'Así sabremos si el último cobro de $name cuenta como gasto.',
+                  style: AppType.subhead,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Entrance(
+                index: 2,
+                child: PrimaryButton(
+                  label: 'Sí, me cobraron',
+                  onTap: () => Navigator.pop(context, const _SheetResult.cancelled(wasCharged: true)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Entrance(
+                index: 3,
+                child: PrimaryButton(
+                  label: 'No, la cancelé a tiempo',
+                  secondary: true,
+                  onTap: () => Navigator.pop(context, const _SheetResult.cancelled(wasCharged: false)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
 }
