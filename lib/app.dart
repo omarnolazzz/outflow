@@ -18,6 +18,7 @@ import 'features/merchants/presentation/screens/catalog_screen.dart';
 import 'features/onboarding/presentation/onboarding_flow.dart';
 import 'features/shell/presentation/app_shell.dart';
 import 'features/wallet/presentation/screens/movements_screen.dart';
+import 'features/wallet/presentation/screens/summary_screen.dart';
 import 'features/wallet/presentation/wallet_providers.dart';
 import 'features/wallet/presentation/widgets/movement_sheet.dart';
 import 'features/wallet/domain/movement.dart';
@@ -160,7 +161,7 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
           AppTab.home: (_) => const HomeScreen(),
           AppTab.movements: (_) => const MovementsScreen(),
           AppTab.subscriptions: (_) => const SubscriptionsScreen(),
-          AppTab.summary: (_) => const _Pending('Resumen'),
+          AppTab.summary: (_) => const SummaryScreen(),
         },
         onQuickAdd: _quickAdd,
       ),
@@ -237,17 +238,5 @@ class _PrivacyCover extends StatelessWidget {
       color: AppColors.background,
       child: Center(child: OutflowMark(size: 64)),
     ),
-  );
-}
-
-/// Pestaña aún en construcción (se sustituye en las siguientes tareas).
-class _Pending extends StatelessWidget {
-  const _Pending(this.title);
-  final String title;
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: AppColors.background,
-    body: Center(child: Text(title)),
   );
 }

@@ -116,3 +116,19 @@ class WalletActions {
     await _movements.save(m);
   }
 }
+
+/// Los 6 meses que terminan en el mes dado (para el Resumen).
+final lastMonthsProvider = Provider.family<AsyncValue<List<MonthSummary>>, DateTime>((ref, month) {
+  final movements = ref.watch(movementsProvider).value;
+  final subs = ref.watch(subscriptionsProvider).value;
+  final settings = ref.watch(walletSettingsProvider).value;
+  if (movements == null || subs == null || settings == null) return const AsyncLoading();
+  return AsyncData(MonthSummary.lastMonths(
+    6,
+    movements: movements,
+    subscriptions: subs,
+    settings: settings,
+    month: month,
+    now: ref.watch(nowProvider),
+  ));
+});
