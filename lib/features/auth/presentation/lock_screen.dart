@@ -15,8 +15,12 @@ import '../../../core/widgets/outflow_mark.dart';
 import '../../../core/widgets/pressable.dart';
 import '../domain/auth_repository.dart';
 import 'lock_controller.dart';
+import 'splash_intro.dart';
 
 const _pinLength = 6;
+
+/// La intro solo se ve en el primer arranque, no al re-bloquear al volver.
+var _introPlayed = false;
 
 /// Pantalla de bloqueo y de creación de PIN.
 class LockScreen extends ConsumerStatefulWidget {
@@ -41,6 +45,25 @@ class _LockScreenState extends ConsumerState<LockScreen> with SingleTickerProvid
   Timer? _lockoutTicker;
   bool _autoBioTried = false;
 
+  final _markKey = GlobalKey();
+
+  /// Intro sobre la pantalla (null hasta conocer "reducir movimiento").
+  bool? _showIntro;
+  bool _introUsed = false;
+
+  /// Las entradas de la pantalla esperan a que la intro les ceda el sitio.
+  bool _revealed = true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_showIntro == null) {
+      _showIntro = _introUsed = !_introPlayed && !AppMotion.reduced(context);
+      _introPlayed = true;
+      _revealed = !_showIntro!;
+    }
+  }
+
   _Step get _step {
     final s = ref.read(lockControllerProvider);
     if (s is LockNeedsSetup) return _firstPin == null ? _Step.create : _Step.confirm;
@@ -55,7 +78,8 @@ class _LockScreenState extends ConsumerState<LockScreen> with SingleTickerProvid
   }
 
   void _tryAutoBiometrics(AppLockState s) {
-    if (_autoBioTried || s is! LockLocked || s.biometricLabel == null) return;
+    // Face ID no tapa la intro: se pide cuando la pantalla ya está asentada.
+    if (_autoBioTried || _showIntro == true || s is! LockLocked || s.biometricLabel == null) return;
     _autoBioTried = true;
     // Tras el primer frame, para que la pantalla ya sea visible bajo el prompt.
     WidgetsBinding.instance.addPostFrameCallback((_) => _biometrics());
@@ -183,21 +207,32 @@ class _LockScreenState extends ConsumerState<LockScreen> with SingleTickerProvid
         : 0;
     final message = lockoutLeft > 0 ? 'Demasiados intentos. Espera $lockoutLeft s.' : _message;
 
+    final intro = _showIntro ?? false;
+    final mark = OutflowMark(key: _markKey, size: 56);
+
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: state is LockLoading
+      body: Stack(
+        children: [
+          SafeArea(
+            child: EntranceGate(
+              open: _revealed,
+              child: state is LockLoading
             ? const SizedBox.shrink()
             : Column(
                 children: [
                   const Spacer(flex: 3),
-                  const Entrance(
-                    scale: 0.5,
-                    offset: Offset.zero,
-                    duration: Duration(milliseconds: 650),
-                    curve: Curves.easeOutBack,
-                    child: OutflowMark(size: 56),
-                  ),
+                  // Tras la intro, la marca que viajó ocupa este sitio.
+                  if (_introUsed)
+                    Opacity(opacity: intro ? 0 : 1, child: mark)
+                  else
+                    Entrance(
+                      scale: 0.5,
+                      offset: Offset.zero,
+                      duration: const Duration(milliseconds: 650),
+                      curve: Curves.easeOutBack,
+                      child: mark,
+                    ),
                   const SizedBox(height: 20),
                   Entrance(
                     index: 2,
@@ -234,7 +269,7 @@ class _LockScreenState extends ConsumerState<LockScreen> with SingleTickerProvid
                         final dx = math.sin(t * math.pi * 6) * (1 - t) * 12;
                         return Transform.translate(offset: Offset(dx, 0), child: child);
                       },
-                      child: _PinDots(filled: _pin.length, error: _message != null),
+                      child: _PinDots(filled: _pin.length, error: _message != null, busy: _busy),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -247,32 +282,88 @@ class _LockScreenState extends ConsumerState<LockScreen> with SingleTickerProvid
                     ),
                   ),
                   const Spacer(flex: 2),
-                  _Keypad(
-                    onDigit: _press,
-                    onBackspace: _backspace,
-                    onBiometric: state is LockLocked && state.biometricLabel != null ? _biometrics : null,
-                    biometricIsFace: state is LockLocked && state.biometricLabel == 'Face ID',
+                  // Mientras se comprueba el PIN, el teclado cede protagonismo.
+                  AnimatedOpacity(
+                    opacity: _busy ? 0.35 : 1,
+                    duration: AppMotion.medium,
+                    curve: AppMotion.ease,
+                    child: _Keypad(
+                      onDigit: _press,
+                      onBackspace: _backspace,
+                      onBiometric: state is LockLocked && state.biometricLabel != null ? _biometrics : null,
+                      biometricIsFace: state is LockLocked && state.biometricLabel == 'Face ID',
+                    ),
                   ),
                   const SizedBox(height: 24),
                 ],
               ),
+            ),
+          ),
+          if (intro)
+            Positioned.fill(
+              child: SplashIntro(
+                target: _markKey,
+                ready: state is! LockLoading,
+                onReveal: () => setState(() => _revealed = true),
+                onDone: () => setState(() => _showIntro = false),
+              ),
+            ),
+        ],
       ),
     );
   }
 }
 
+/// Fila de puntos del PIN. Al comprobarlo, los puntos se juntan en el centro
+/// y se convierten en un indicador de carga (y vuelven si el PIN falla).
 class _PinDots extends StatelessWidget {
-  const _PinDots({required this.filled, required this.error});
+  const _PinDots({required this.filled, required this.error, required this.busy});
   final int filled;
   final bool error;
+  final bool busy;
+
+  /// Separación entre centros de puntos (12 de ancho + 14 de margen).
+  static const _pitch = 26.0;
 
   @override
   Widget build(BuildContext context) {
+    final reduced = AppMotion.reduced(context);
     return Semantics(
-      label: '$filled de $_pinLength dígitos',
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [for (var i = 0; i < _pinLength; i++) _PinDot(filled: i < filled, error: error)],
+      label: busy ? 'Comprobando PIN' : '$filled de $_pinLength dígitos',
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(end: busy ? 1 : 0),
+        duration: reduced ? AppMotion.short : const Duration(milliseconds: 320),
+        curve: AppMotion.ease,
+        builder: (context, t, _) => Stack(
+          alignment: Alignment.center,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var i = 0; i < _pinLength; i++)
+                  Transform.translate(
+                    // Cada punto viaja hacia el centro de la fila.
+                    offset: Offset(reduced ? 0 : ((_pinLength - 1) / 2 - i) * _pitch * t, 0),
+                    child: Opacity(
+                      opacity: (1 - t * 1.6).clamp(0.0, 1.0),
+                      child: _PinDot(filled: i < filled, error: error),
+                    ),
+                  ),
+              ],
+            ),
+            if (t > 0)
+              Opacity(
+                opacity: ((t - 0.4) / 0.6).clamp(0.0, 1.0),
+                child: Transform.scale(
+                  scale: 0.5 + 0.5 * t,
+                  child: const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 1.6, color: AppColors.ink),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

@@ -11,11 +11,15 @@ class OutflowMark extends StatelessWidget {
     this.size = 56,
     this.background = AppColors.ink,
     this.foreground = AppColors.onAccent,
+    this.draw = 1,
   });
 
   final double size;
   final Color background;
   final Color foreground;
+
+  /// Fracción trazada de la flecha (0–1): permite "dibujarla" en la intro.
+  final double draw;
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -23,15 +27,16 @@ class OutflowMark extends StatelessWidget {
         image: true,
         child: CustomPaint(
           size: Size.square(size),
-          painter: _MarkPainter(background, foreground),
+          painter: _MarkPainter(background, foreground, draw.clamp(0.0, 1.0)),
         ),
       );
 }
 
 class _MarkPainter extends CustomPainter {
-  _MarkPainter(this.bg, this.fg);
+  _MarkPainter(this.bg, this.fg, this.draw);
   final Color bg;
   final Color fg;
+  final double draw;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -46,8 +51,9 @@ class _MarkPainter extends CustomPainter {
       ..moveTo(448 * s, 352 * s)
       ..lineTo(672 * s, 352 * s)
       ..lineTo(672 * s, 576 * s);
+    if (draw == 0) return;
     canvas.drawPath(
-      arrow,
+      draw == 1 ? arrow : _trim(arrow, draw),
       Paint()
         ..color = fg
         ..style = PaintingStyle.stroke
@@ -57,6 +63,19 @@ class _MarkPainter extends CustomPainter {
     );
   }
 
+  /// Los primeros [t] (0–1) de la longitud total, recorriendo los tramos en orden.
+  static Path _trim(Path path, double t) {
+    final metrics = path.computeMetrics().toList();
+    var left = metrics.fold<double>(0, (sum, m) => sum + m.length) * t;
+    final out = Path();
+    for (final m in metrics) {
+      if (left <= 0) break;
+      out.addPath(m.extractPath(0, left.clamp(0, m.length)), Offset.zero);
+      left -= m.length;
+    }
+    return out;
+  }
+
   @override
-  bool shouldRepaint(_MarkPainter old) => old.bg != bg || old.fg != fg;
+  bool shouldRepaint(_MarkPainter old) => old.bg != bg || old.fg != fg || old.draw != draw;
 }

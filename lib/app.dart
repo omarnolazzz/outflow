@@ -149,8 +149,9 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
   }
 }
 
-/// La pantalla de bloqueo se "levanta" al desbloquear: fundido + leve
-/// escala hacia el usuario, como un material que se retira.
+/// Al desbloquear, la pantalla de bloqueo se hunde y se desvanece (como una
+/// hoja que baja) mientras el contenido entra por escalones; al re-bloquear
+/// sube de la misma forma.
 class _LockLayer extends StatelessWidget {
   const _LockLayer({required this.locked});
   final bool locked;
@@ -159,14 +160,14 @@ class _LockLayer extends StatelessWidget {
   Widget build(BuildContext context) {
     final reduced = AppMotion.reduced(context);
     return AnimatedSwitcher(
-      duration: reduced ? AppMotion.short : const Duration(milliseconds: 380),
+      duration: reduced ? AppMotion.short : const Duration(milliseconds: 460),
       switchInCurve: AppMotion.ease,
-      switchOutCurve: AppMotion.ease,
+      switchOutCurve: Curves.easeInCubic,
       transitionBuilder: (child, animation) {
         final fade = FadeTransition(opacity: animation, child: child);
         if (reduced) return fade;
-        return ScaleTransition(
-          scale: Tween(begin: 1.04, end: 1.0).animate(animation),
+        return SlideTransition(
+          position: Tween(begin: const Offset(0, 0.06), end: Offset.zero).animate(animation),
           child: fade,
         );
       },
