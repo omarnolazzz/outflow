@@ -172,7 +172,7 @@ class _CreateMerchantScreenState extends ConsumerState<CreateMerchantScreen> {
                   controller: _name,
                   autofocus: widget.initialName.isEmpty,
                   textCapitalization: TextCapitalization.words,
-                  style: AppType.title,
+                  style: AppType.title2,
                   onChanged: (_) => setState(() {}),
                   decoration: const InputDecoration(
                     hintText: 'Nombre del comercio',
@@ -391,9 +391,9 @@ class _SourceButton extends StatelessWidget {
       child: Container(
         height: 48,
         decoration: BoxDecoration(
-          color: AppColors.surfaceMuted,
+          color: AppColors.fill,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: AppColors.separator),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -429,9 +429,9 @@ class _LogoCell extends StatelessWidget {
         height: 42,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected ? AppColors.callout : AppColors.background,
+          color: selected ? AppColors.fill : AppColors.background,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: selected ? AppColors.ink : AppColors.border, width: selected ? 1.5 : 1),
+          border: Border.all(color: selected ? AppColors.ink : AppColors.separator, width: selected ? 1.5 : 1),
         ),
         child: child,
       ),

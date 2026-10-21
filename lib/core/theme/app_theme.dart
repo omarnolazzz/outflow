@@ -26,12 +26,12 @@ abstract final class AppTheme {
       // El feedback de presión lo da [Pressable]; sin ondas de tinta Material.
       splashFactory: NoSplash.splashFactory,
       highlightColor: AppColors.pressed,
-      dividerColor: AppColors.divider,
+      dividerColor: AppColors.separator,
     );
 
     return base.copyWith(
       textTheme: base.textTheme.apply(bodyColor: AppColors.ink, displayColor: AppColors.ink),
-      dividerTheme: const DividerThemeData(color: AppColors.divider, thickness: 1, space: 1),
+      dividerTheme: const DividerThemeData(color: AppColors.separator, thickness: 1, space: 1),
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.background,
         foregroundColor: AppColors.ink,
@@ -54,7 +54,7 @@ abstract final class AppTheme {
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.all(AppColors.surface),
         trackColor: WidgetStateProperty.resolveWith(
-          (s) => s.contains(WidgetState.selected) ? AppColors.accent : AppColors.border,
+          (s) => s.contains(WidgetState.selected) ? AppColors.accent : AppColors.separator,
         ),
         trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
       ),

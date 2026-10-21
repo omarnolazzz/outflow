@@ -276,9 +276,9 @@ class _StepperRow extends StatelessWidget {
             height: 30,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(color: AppColors.separator),
             ),
-            child: Icon(i, size: 14, color: next == null ? AppColors.border : AppColors.ink),
+            child: Icon(i, size: 14, color: next == null ? AppColors.separator : AppColors.ink),
           ),
         );
 
@@ -336,7 +336,7 @@ class _OffsetChip extends StatelessWidget {
           decoration: BoxDecoration(
             color: selected ? AppColors.ink : AppColors.background,
             borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: selected ? AppColors.ink : AppColors.border),
+            border: Border.all(color: selected ? AppColors.ink : AppColors.separator),
           ),
           child: Text(
             Fmt.days(days),

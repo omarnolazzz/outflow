@@ -61,13 +61,13 @@ class MerchantAvatar extends StatelessWidget {
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: fullBleed ? AppColors.background : AppColors.surfaceMuted,
+        color: fullBleed ? AppColors.background : AppColors.fill,
         borderRadius: radius,
       ),
       // El borde va por encima para que se vea también sobre logos blancos.
       foregroundDecoration: BoxDecoration(
         borderRadius: radius,
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: AppColors.separator),
       ),
       child: fullBleed
           ? ClipRRect(borderRadius: radius, child: SizedBox.expand(child: inner))

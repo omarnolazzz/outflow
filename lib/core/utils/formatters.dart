@@ -53,6 +53,10 @@ abstract final class Fmt {
   /// "21 oct"
   static String dateShort(DateTime d) => DateFormat('d MMM', locale).format(d).replaceAll('.', '');
 
+  /// "miércoles, 21 oct 2026" (filas "Se renueva el").
+  static String dateMedium(DateTime d) =>
+      DateFormat('EEEE, d MMM y', locale).format(d).replaceAll('.', '');
+
   /// "martes, 21 de octubre de 2026"
   static String dateLong(DateTime d) => DateFormat("EEEE, d 'de' MMMM 'de' y", locale).format(d);
 

@@ -391,7 +391,7 @@ class _SubscriptionEditorSheetState extends ConsumerState<SubscriptionEditorShee
           const SizedBox(height: 8),
           e(ListRow(
             label: 'Se renueva el',
-            value: _capitalize(Fmt.dateLong(date)),
+            value: _capitalize(Fmt.dateMedium(date)),
             valueColor: AppColors.ink,
             onTap: () => _pickDate(date),
           )),

@@ -38,12 +38,4 @@ abstract final class AppColors {
 
   /// Sombra difusa de tarjetas.
   static const shadow = Color(0x0F000000);
-
-  // Nombres del estilo anterior, aún usados por pantallas sin migrar.
-  // Se eliminan al terminar la migración.
-  static const surfaceMuted = fill;
-  static const border = separator;
-  static const divider = separator;
-  static const dangerSurface = dangerSoft;
-  static const callout = fill;
 }

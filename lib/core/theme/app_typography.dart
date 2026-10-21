@@ -108,10 +108,7 @@ abstract final class AppType {
     fontFeatures: _tabular,
   );
 
-  // Nombres del estilo anterior, aún usados por pantallas sin migrar.
-  // Se eliminan al terminar la migración.
-  static const display = title1;
-  static const title = title2;
+  /// Cuerpo con algo más de peso (valores en filas y opciones).
   static const bodyStrong = TextStyle(
     fontSize: 17,
     height: 1.35,
@@ -119,5 +116,4 @@ abstract final class AppType {
     letterSpacing: -0.4,
     color: AppColors.ink,
   );
-  static const section = footnote;
 }

@@ -230,7 +230,7 @@ class _DetailBody extends ConsumerWidget {
             child: Column(
               children: [
                 _Row(label: 'Frecuencia', value: Fmt.cycle(s.cycle)),
-                _Row(label: 'Se renueva el', value: next == null ? '—' : _capitalize(Fmt.dateLong(next))),
+                _Row(label: 'Se renueva el', value: next == null ? '—' : _capitalize(Fmt.dateMedium(next))),
                 _Row(label: 'Patrón', value: s.pattern.describe(s.cycle)),
                 _Row(label: 'Método de pago', value: s.paymentMethod.display),
                 _Row(label: 'Categoría', value: s.category.label),

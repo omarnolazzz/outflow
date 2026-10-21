@@ -186,7 +186,7 @@ class _SplashIntroState extends State<SplashIntro> with SingleTickerProviderStat
         opacity: t,
         child: Text(
           _word[i],
-          style: AppType.display.copyWith(fontSize: 30, letterSpacing: 0),
+          style: AppType.title1.copyWith(fontSize: 30, letterSpacing: 0),
         ),
       ),
     );
