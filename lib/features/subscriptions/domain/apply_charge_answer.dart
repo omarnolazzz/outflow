@@ -8,7 +8,12 @@ Subscription? applyChargeAnswer(Subscription s, ChargeAnswer a, DateTime now) {
   if (a.subscriptionId != s.id || s.pendingCharge(now) != a.charge) return null;
 
   if (a.action == ChargeAnswerAction.cancel) {
-    return s.copyWith(status: SubscriptionStatus.cancelled, statusChangedAt: now);
+    // La notificación no puede preguntar si hubo cobro: la pregunta espera en Inicio.
+    return s.copyWith(
+      status: SubscriptionStatus.cancelled,
+      statusChangedAt: now,
+      cancelQuestionCharge: a.charge,
+    );
   }
   final next = a.next!;
   // La sugerencia elegida explica la fecha: su patrón es el que se aprende.

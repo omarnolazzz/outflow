@@ -62,6 +62,19 @@ class SubscriptionActions {
     return s;
   }
 
+  /// "¿Te llegaron a cobrar este mes?" tras cancelar desde la notificación.
+  /// Devuelve la versión anterior para deshacer.
+  Future<Subscription> resolveCancelQuestion(Subscription s, {required bool wasCharged}) async {
+    await _repo.save(s.resolveCancelQuestion(wasCharged: wasCharged));
+    return s;
+  }
+
+  /// "Ya la cancelé" en la app tras el cobro [pending]. Devuelve la anterior.
+  Future<Subscription> cancelAfterCharge(Subscription s, DateTime pending, {required bool wasCharged}) async {
+    await _repo.save(s.cancelAfterCharge(pending, wasCharged: wasCharged, now: DateTime.now()));
+    return s;
+  }
+
   /// Cambia el estado y devuelve el anterior para poder deshacer.
   Future<Subscription> setStatus(Subscription s, SubscriptionStatus status) async {
     await _repo.save(s.copyWith(status: status, statusChangedAt: DateTime.now()));

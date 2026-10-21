@@ -134,6 +134,7 @@ class Subscription {
     this.notes = '',
     this.chargeHistory = const [],
     this.chargePattern,
+    this.cancelQuestionCharge,
   });
 
   final String id;
@@ -165,6 +166,10 @@ class Subscription {
   /// Patrón aprendido o elegido. null → mismo día del mes que el ancla
   /// (el comportamiento de siempre, también para datos antiguos).
   final ChargePattern? chargePattern;
+
+  /// "Ya la cancelé" pulsado en la notificación tras este cobro: falta saber
+  /// si se llegó a cobrar ("¿Te llegaron a cobrar este mes?").
+  final DateTime? cancelQuestionCharge;
 
   ChargePattern get pattern => chargePattern ?? ChargePattern.sameDay(firstChargeDate.day);
 
@@ -246,6 +251,32 @@ class Subscription {
     );
   }
 
+  /// Responde "¿Te llegaron a cobrar este mes?" tras cancelar desde la
+  /// notificación: si hubo cobro queda en el historial como confirmado.
+  Subscription resolveCancelQuestion({required bool wasCharged}) {
+    final q = cancelQuestionCharge;
+    if (q == null) return this;
+    return copyWith(
+      clearCancelQuestion: true,
+      chargeHistory: wasCharged ? _withConfirmed(q) : null,
+    );
+  }
+
+  /// "Ya la cancelé" en la app después del cobro [pending], sabiendo ya si se cobró.
+  Subscription cancelAfterCharge(DateTime pending, {required bool wasCharged, required DateTime now}) =>
+      copyWith(
+        status: SubscriptionStatus.cancelled,
+        statusChangedAt: now,
+        clearCancelQuestion: true,
+        chargeHistory: wasCharged ? _withConfirmed(dateOnly(pending)) : null,
+      );
+
+  List<ChargeRecord> _withConfirmed(DateTime date) => [
+        for (final r in chargeHistory)
+          if (r.date != date) r,
+        ChargeRecord(date: date, confirmed: true),
+      ]..sort((a, b) => a.date.compareTo(b.date));
+
   int? daysUntilCharge(DateTime now) {
     final next = nextCharge(now);
     return next?.difference(dateOnly(now)).inDays;
@@ -301,6 +332,8 @@ class Subscription {
     String? notes,
     List<ChargeRecord>? chargeHistory,
     ChargePattern? chargePattern,
+    DateTime? cancelQuestionCharge,
+    bool clearCancelQuestion = false,
   }) =>
       Subscription(
         id: id,
@@ -321,5 +354,7 @@ class Subscription {
         createdAt: createdAt,
         chargeHistory: chargeHistory ?? this.chargeHistory,
         chargePattern: chargePattern ?? this.chargePattern,
+        cancelQuestionCharge:
+            clearCancelQuestion ? null : (cancelQuestionCharge ?? this.cancelQuestionCharge),
       );
 }

@@ -9,7 +9,8 @@ import '../domain/entities/subscription.dart';
 /// `schemaVersion` permite migraciones futuras sin romper datos guardados.
 abstract final class SubscriptionModel {
   /// v2: historial de cobros y patrón (campos opcionales; v1 se lee igual).
-  static const schemaVersion = 2;
+  /// v3: pregunta pendiente tras cancelar desde la notificación.
+  static const schemaVersion = 3;
 
   static Map<String, Object?> toJson(Subscription s) => {
         'v': schemaVersion,
@@ -29,6 +30,7 @@ abstract final class SubscriptionModel {
         'createdAt': s.createdAt.toIso8601String(),
         'chargeHistory': [for (final r in s.chargeHistory) r.toJson()],
         'chargePattern': s.chargePattern?.toJson(),
+        'cancelQuestionCharge': s.cancelQuestionCharge?.toIso8601String(),
       };
 
   static Subscription fromJson(Map<String, Object?> json) {
@@ -57,6 +59,7 @@ abstract final class SubscriptionModel {
           ChargeRecord.fromJson((r as Map).cast<String, Object?>()),
       ],
       chargePattern: map('chargePattern') == null ? null : ChargePattern.fromJson(map('chargePattern')!),
+      cancelQuestionCharge: date('cancelQuestionCharge'),
     );
   }
 }
