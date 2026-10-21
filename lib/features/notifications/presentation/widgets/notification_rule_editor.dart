@@ -6,7 +6,7 @@ import '../../../../core/motion/app_motion.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/utils/formatters.dart';
-import '../../../../core/widgets/notion_widgets.dart';
+import '../../../../core/widgets/status_pill.dart';
 import '../../../../core/widgets/pressable.dart';
 import '../../../subscriptions/domain/entities/subscription.dart';
 import '../../domain/notification_rule.dart';
@@ -116,16 +116,25 @@ class NotificationRuleEditor extends StatelessWidget {
                         format: (v) => v == 0 ? 'Ese día' : '${Fmt.days(v)} antes',
                         onChanged: (v) => onChanged(r.copyWith(deadlineLeadDays: v)),
                       ),
-                    PropertyRow(
-                      icon: LucideIcons.clock,
-                      label: 'Hora',
+                    Pressable(
                       onTap: () => _pickTime(context),
-                      value: Text(Fmt.time(r.hour, r.minute), style: AppType.amount),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                        child: Row(
+                          children: [
+                            const Icon(LucideIcons.clock, size: 18, color: AppColors.inkSecondary),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text('Hora', style: AppType.body)),
+                            Text(Fmt.time(r.hour, r.minute), style: AppType.headline.copyWith(color: AppColors.accent)),
+                          ],
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 14),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Text('Avisos adicionales (días antes)', style: AppType.section),
+                      child: Text('Avisos adicionales (días antes)', style: AppType.footnote.copyWith(fontWeight: FontWeight.w600)),
                     ),
                     const SizedBox(height: 8),
                     Padding(
@@ -178,7 +187,21 @@ class _Preview extends StatelessWidget {
             return 'Recibirás ${offsets.length == 1 ? '1 aviso' : '${offsets.length} avisos'}: '
                 '${_joinEs(parts)}, a las ${Fmt.time(rule.hour, rule.minute)}.';
           }();
-    return NotionCallout(emoji: '🔔', child: Text(text, style: AppType.body));
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: ShapeDecoration(
+        color: AppColors.accentSoft,
+        shape: RoundedSuperellipseBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(LucideIcons.bellRing, size: 18, color: AppColors.accent),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text, style: AppType.subhead.copyWith(color: AppColors.ink))),
+        ],
+      ),
+    );
   }
 
   static String _joinEs(List<String> items) {
@@ -365,9 +388,9 @@ class _SubscriptionRuleSheetState extends State<SubscriptionRuleSheet> {
             child: Row(
               children: [
                 Expanded(
-                  child: Text('Recordatorios de ${widget.subscription.name}', style: AppType.title),
+                  child: Text('Recordatorios de ${widget.subscription.name}', style: AppType.title2),
                 ),
-                OutlineAction(
+                PillButton(
                   label: 'Guardar',
                   filled: true,
                   onTap: () => Navigator.pop(

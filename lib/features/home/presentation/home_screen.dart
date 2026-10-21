@@ -14,7 +14,7 @@ import '../../../core/widgets/surface_card.dart';
 import '../../account/presentation/account_avatar.dart';
 import '../../account/presentation/session_controller.dart';
 import '../../merchants/presentation/merchant_providers.dart';
-import '../../notifications/presentation/screens/settings_screen.dart';
+import '../../settings/presentation/settings_screen.dart';
 import '../../shell/presentation/app_shell.dart';
 import '../../subscriptions/domain/dashboard_summary.dart';
 import '../../subscriptions/presentation/screens/subscription_detail_screen.dart';
