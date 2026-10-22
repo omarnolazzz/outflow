@@ -161,8 +161,9 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
 
     ref.listen(sessionControllerProvider, (prev, next) {
       if (next is Ready) {
-        final draft = _pendingLink.onReady();
-        if (draft != null) WidgetsBinding.instance.addPostFrameCallback((_) => _openDraft(draft));
+        final drafts = _pendingLink.takeAll();
+        // Se apilan en orden: el más reciente queda arriba.
+        if (drafts.isNotEmpty) WidgetsBinding.instance.addPostFrameCallback((_) => drafts.forEach(_openDraft));
       }
       if (next is Ready && _pendingSubscriptionId != null) {
         final id = _pendingSubscriptionId!;

@@ -50,6 +50,23 @@ void main() {
     expect(parse('5')!.note, '');
   });
 
+  test(r'un $ suelto es la moneda principal si esta usa $; si no, dólares', () {
+    MovementDraft? withFallback(String c) => parseApplePayLink(
+          Uri(scheme: 'outflow', host: 'gasto', queryParameters: {'importe': r'$12.50'}),
+          fallbackCurrency: c,
+          now: now,
+        );
+    expect(withFallback('MXN')!.currency, 'MXN');
+    expect(withFallback('PEN')!.currency, 'USD');
+    expect(withFallback('PEN')!.amountMinor, 1250);
+  });
+
+  test('un punto del símbolo no multiplica el importe', () {
+    expect(parse('S/. 12.50')!.amountMinor, 1250);
+    expect(parse('12.50 S/.')!.amountMinor, 1250);
+    expect(parse('S/. 12.50')!.currency, 'PEN');
+  });
+
   test('otro enlace no es un pago', () {
     expect(parseApplePayLink(Uri.parse('outflow://otra?importe=5'), fallbackCurrency: 'PEN', now: now), isNull);
     expect(parseApplePayLink(Uri.parse('https://gasto?importe=5'), fallbackCurrency: 'PEN', now: now), isNull);

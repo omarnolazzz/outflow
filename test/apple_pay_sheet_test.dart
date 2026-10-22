@@ -84,12 +84,21 @@ void main() {
     expect(movements.saved, hasLength(2));
   });
 
+  test('varios pagos con la app bloqueada no se pierden', () {
+    final pending = PendingLink();
+    final second = MovementDraft(amountMinor: 900, title: 'Tambo', origin: MovementOrigin.applePay, date: now);
+    pending.offer(draft, ready: false);
+    pending.offer(second, ready: false);
+    expect(pending.takeAll(), [draft, second]);
+    expect(pending.takeAll(), isEmpty);
+  });
+
   test('un enlace recibido con la app bloqueada se entrega una sola vez al desbloquear', () {
     final pending = PendingLink();
     expect(pending.offer(draft, ready: false), isNull);
-    expect(pending.onReady(), draft);
-    expect(pending.onReady(), isNull);
+    expect(pending.takeAll(), [draft]);
+    expect(pending.takeAll(), isEmpty);
     expect(pending.offer(draft, ready: true), draft);
-    expect(pending.onReady(), isNull);
+    expect(pending.takeAll(), isEmpty);
   });
 }

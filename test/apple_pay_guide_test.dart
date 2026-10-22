@@ -41,6 +41,11 @@ void main() {
     expect(kApplePayShortcutUrl, startsWith('outflow://gasto?importe='));
   });
 
+  testWidgets('explica cómo codificar el comercio para nombres con espacios o &', (tester) async {
+    await pump(tester);
+    expect(find.textContaining('Codificar URL'), findsWidgets);
+  });
+
   testWidgets('Probar abre la hoja de gasto con un pago de ejemplo', (tester) async {
     await pump(tester);
     await tester.scrollUntilVisible(find.text('Probar'), 200, scrollable: _list);

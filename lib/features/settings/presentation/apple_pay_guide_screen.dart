@@ -24,12 +24,18 @@ const _steps = <(IconData, String, String)>[
   (LucideIcons.layers, 'Abre la app Atajos', 'Ve a la pestaña "Automatización" y toca "Nueva automatización" (+).'),
   (LucideIcons.wallet, 'Elige "Transacción"', 'Selecciona tus tarjetas de Wallet y deja marcadas todas las categorías.'),
   (LucideIcons.zap, 'Marca "Ejecutar inmediatamente"', 'Así se abrirá Outflow solo, sin pedirte confirmación en Atajos.'),
+  (
+    LucideIcons.code,
+    'Añade dos acciones "Codificar URL"',
+    'Una con la variable "Comercio" y otra con "Tarjeta". Así los nombres con espacios, "&" o "#" '
+        '(como "H&M") llegan completos.',
+  ),
   (LucideIcons.link, 'Añade la acción "Abrir URL"', 'Pega la URL de abajo con el botón Copiar.'),
   (
     LucideIcons.wandSparkles,
     'Cambia las palabras por variables',
-    'Toca "Importe" en la URL y elige la variable "Importe" de la transacción; '
-        'haz lo mismo con "Comercio" y "Tarjeta".',
+    'Toca "Importe" en la URL y elige la variable "Importe" de la transacción; cambia "Comercio" '
+        'y "Tarjeta" por los resultados de las dos acciones "Codificar URL".',
   ),
   (LucideIcons.circleCheck, 'Listo', 'La próxima vez que pagues con el iPhone, Outflow se abrirá con el gasto rellenado.'),
 ];

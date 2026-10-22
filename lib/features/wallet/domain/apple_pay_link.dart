@@ -58,6 +58,9 @@ const _currencyTokens = <String, String>{
   '\$': 'USD',
 };
 
+/// Monedas que se escriben con "$".
+const _dollarSign = {'USD', 'MXN', 'CLP', 'COP', 'ARS'};
+
 /// `outflow://gasto?importe=…&comercio=…&tarjeta=…` (automatización
 /// "Transacción" de Atajos) → borrador de gasto. null si es otro enlace.
 MovementDraft? parseApplePayLink(Uri uri, {required String fallbackCurrency, required DateTime now}) {
@@ -69,6 +72,9 @@ MovementDraft? parseApplePayLink(Uri uri, {required String fallbackCurrency, req
   for (final e in _currencyTokens.entries) {
     if (raw.toUpperCase().contains(e.key)) {
       currency = e.value;
+      // Un "$" suelto sigue el idioma del iPhone: es la moneda principal si
+      // esta también usa "$" (peso mexicano, chileno…); si no, dólares.
+      if (e.key == r'$' && _dollarSign.contains(fallbackCurrency)) currency = fallbackCurrency;
       break;
     }
   }
@@ -86,7 +92,8 @@ MovementDraft? parseApplePayLink(Uri uri, {required String fallbackCurrency, req
 /// Importe en unidades menores a partir de un texto con separadores de miles
 /// y decimales en cualquier convención ("1.234,56", "1,234.56", "12,5").
 int? parseAmountMinor(String text) {
-  final s = text.replaceAll(RegExp(r'[^0-9.,]'), '');
+  // Un punto o una coma de un símbolo ("S/.", "Bs.") no es separador.
+  final s = text.replaceAll(RegExp(r'[^0-9.,]'), '').replaceAll(RegExp(r'^[.,]+|[.,]+$'), '');
   if (!RegExp(r'\d').hasMatch(s)) return null;
 
   final lastDot = s.lastIndexOf('.');

@@ -11,25 +11,22 @@ final incomingLinksProvider = Provider<Stream<Uri>>((ref) {
   return AppLinks().uriLinkStream;
 });
 
-/// Guarda el último gasto llegado por enlace mientras la app está bloqueada y
-/// lo entrega una sola vez al desbloquear.
+/// Guarda los gastos llegados por enlace mientras la app está bloqueada (en
+/// orden, sin perder ninguno) y los entrega una sola vez al desbloquear.
 class PendingLink {
-  MovementDraft? _pending;
+  final _pending = <MovementDraft>[];
 
   /// Devuelve el borrador para abrirlo ya (si la app está lista) o lo guarda.
   MovementDraft? offer(MovementDraft draft, {required bool ready}) {
-    if (ready) {
-      _pending = null;
-      return draft;
-    }
-    _pending = draft;
+    if (ready) return draft;
+    _pending.add(draft);
     return null;
   }
 
-  /// Al desbloquear: el borrador pendiente, una vez.
-  MovementDraft? onReady() {
-    final d = _pending;
-    _pending = null;
-    return d;
+  /// Al desbloquear: todos los pendientes, una vez.
+  List<MovementDraft> takeAll() {
+    final all = List.of(_pending);
+    _pending.clear();
+    return all;
   }
 }

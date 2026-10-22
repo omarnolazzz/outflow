@@ -29,6 +29,19 @@ void main() {
     expect(suggestCategory(merchant: 'STARBUCKS PERU', history: history, categories: cats), 'leisure');
   });
 
+  test('el comercio exacto gana a otro que empieza igual', () {
+    final history = [
+      mv('Plaza Vea', 5000, now.subtract(const Duration(days: 9)), cat: 'groceries'),
+      mv('Plaza San Miguel', 9000, now.subtract(const Duration(days: 1)), cat: 'shopping'),
+    ];
+    expect(suggestCategory(merchant: 'PLAZA VEA', history: history, categories: cats), 'groceries');
+  });
+
+  test('una primera palabra genérica no basta para recordar', () {
+    final history = [mv('La Lucha Sanguchería', 3000, now, cat: 'leisure')];
+    expect(suggestCategory(merchant: 'La Bodega del Barrio', history: history, categories: cats), isNull);
+  });
+
   test('sin historial usa palabras clave', () {
     expect(suggestCategory(merchant: 'Plaza Vea Surco', history: const [], categories: cats), 'groceries');
     expect(suggestCategory(merchant: 'UBER *TRIP', history: const [], categories: cats), 'transport');

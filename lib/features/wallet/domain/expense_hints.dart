@@ -13,6 +13,9 @@ String normalizeMerchant(String s) {
   return b.toString().trim().replaceAll(RegExp(r'\s+'), ' ');
 }
 
+/// Primeras palabras demasiado comunes para identificar un comercio.
+const _genericWords = {'plaza', 'tienda', 'santa', 'mercado', 'bodega', 'restaurante', 'grupo', 'casa'};
+
 /// Palabras clave → categoría, para comercios nunca vistos.
 const kCategoryKeywords = <String, List<String>>{
   'groceries': ['supermercado', 'plaza vea', 'tottus', 'wong', 'metro', 'makro', 'vivanda', 'mass', 'tambo', 'oxxo'],
@@ -34,17 +37,30 @@ String? suggestCategory({
   final m = normalizeMerchant(merchant);
   if (m.isEmpty) return null;
   final valid = {for (final c in categories) c.id};
-  final firstWord = m.split(' ').first;
+  final words = m.split(' ');
 
-  final previous = history
-      .where((x) =>
-          x.isExpense &&
-          x.origin != MovementOrigin.subscription &&
-          valid.contains(x.categoryId) &&
-          normalizeMerchant(x.title).split(' ').first == firstWord)
-      .toList()
-    ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-  if (previous.isNotEmpty) return previous.first.categoryId;
+  // El gasto anterior que más palabras iniciales comparte con este comercio
+  // (a igualdad, el más reciente). Una sola palabra en común solo cuenta si
+  // es significativa: "La …" o "Plaza …" no bastan.
+  Movement? best;
+  var bestScore = 0;
+  for (final x in history) {
+    if (!x.isExpense || x.origin == MovementOrigin.subscription || !valid.contains(x.categoryId)) continue;
+    final other = normalizeMerchant(x.title).split(' ');
+    var score = 0;
+    while (score < words.length && score < other.length && words[score] == other[score]) {
+      score++;
+    }
+    final exact = score == words.length && score == other.length;
+    if (exact) score += 100;
+    final meaningful = score >= 2 || (score == 1 && words.first.length >= 4 && !_genericWords.contains(words.first));
+    if (!meaningful) continue;
+    if (score > bestScore || (score == bestScore && x.createdAt.isAfter(best!.createdAt))) {
+      best = x;
+      bestScore = score;
+    }
+  }
+  if (best != null) return best.categoryId;
 
   for (final e in kCategoryKeywords.entries) {
     if (valid.contains(e.key) && e.value.any(m.contains)) return e.key;
