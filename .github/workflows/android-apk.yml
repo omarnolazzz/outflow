@@ -8,7 +8,7 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     env:
       # Firebase / Google (secretos del repositorio). Sin ellos la app compila
       # igual y usa la cuenta de vista previa.
@@ -54,9 +54,18 @@ jobs:
           } > "$RUNNER_TEMP/key.properties"
           echo "OUTFLOW_KEY_PROPERTIES=$RUNNER_TEMP/key.properties" >> "$GITHUB_ENV"
 
+      # Las máquinas de GitHub tienen ~7 GB de RAM: con los 8 GB de heap que
+      # pide gradle.properties en local, Gradle se queda sin memoria y se cuelga.
+      - name: Memoria de Gradle
+        run: |
+          sed -i 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx4G -XX:MaxMetaspaceSize=1G -XX:+HeapDumpOnOutOfMemoryError/' android/gradle.properties
+          echo "org.gradle.daemon=false" >> android/gradle.properties
+
+      - uses: gradle/actions/setup-gradle@v4
+
       - name: Compilar APK
         run: |
-          flutter build apk --release --split-per-abi \
+          flutter build apk --release --target-platform android-arm64 --split-per-abi \
             --dart-define=FIREBASE_SENDER_ID="$FIREBASE_SENDER_ID" \
             --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID" \
             --dart-define=FIREBASE_ANDROID_API_KEY="$FIREBASE_ANDROID_API_KEY" \
