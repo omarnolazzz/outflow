@@ -23,6 +23,7 @@ dependencies:
   google_sign_in: ^7.2.0
   hive_ce: ^2.22.0
   hive_ce_flutter: ^2.5.0
+  http: ^1.6.0
   image: ^4.12.0
   intl: ^0.20.3
   local_auth: ^3.0.2
