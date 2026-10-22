@@ -65,7 +65,8 @@ class GeminiReceiptReader implements ReceiptReader {
             'parts': [
               {
                 'text': 'Extrae los datos de este ticket de compra. Usa el total final pagado '
-                    '(no el subtotal ni el vuelto). Responde solo con el JSON.\n\n$text',
+                    '(no el subtotal ni el vuelto). Las fechas del ticket están en formato '
+                    'día/mes/año. Responde solo con el JSON.\n\n$text',
               },
             ],
           },
@@ -79,33 +80,59 @@ class GeminiReceiptReader implements ReceiptReader {
       final reply = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, Object?>;
       final part = (((reply['candidates'] as List).first as Map)['content'] as Map)['parts'] as List;
       final json = jsonDecode((part.first as Map)['text'] as String) as Map<String, Object?>;
-      return _fromJson(json, now).merge(local);
+      final ai = _fromJson(json, now).merge(local);
+      // La fecha leída del propio ticket (día/mes) manda sobre la de la IA,
+      // que podría leer 08/10 como 10 de agosto.
+      return local.date == null
+          ? ai
+          : ReceiptData(
+              merchant: ai.merchant,
+              date: local.date,
+              totalMinor: ai.totalMinor,
+              currency: ai.currency,
+              items: ai.items,
+              fromAi: true,
+            );
     } catch (e) {
       debugPrint('Gemini no pudo leer el ticket: $e');
       return local;
     }
   }
 
-  static int? _minor(Object? v) => switch (v) {
-        num n => (n * 100).round(),
-        String s => parseAmountMinor(s),
-        _ => null,
+  /// Importe en unidades menores; 0 o negativo cuenta como "no leído".
+  static int? _minor(Object? v) {
+    final m = switch (v) {
+      num n => (n * 100).round(),
+      String s => parseAmountMinor(s),
+      _ => null,
+    };
+    return m == null || m <= 0 ? null : m;
+  }
+
+  static String? _text(Object? v) => v is String && v.trim().isNotEmpty ? v.trim() : null;
+
+  static int _quantity(Object? v) => switch (v) {
+        num n when n >= 1 => n.toInt(),
+        String s => int.tryParse(s.trim()) ?? 1,
+        _ => 1,
       };
 
+  /// Cada campo se lee por separado: uno con un tipo inesperado no invalida el resto.
   static ReceiptData _fromJson(Map<String, Object?> j, DateTime now) {
-    final date = DateTime.tryParse(j['date'] as String? ?? '');
+    final date = DateTime.tryParse(_text(j['date']) ?? '');
     final today = DateTime(now.year, now.month, now.day);
+    final currency = _text(j['currency'])?.toUpperCase();
     return ReceiptData(
-      merchant: (j['merchant'] as String?)?.trim(),
+      merchant: _text(j['merchant']),
       date: date == null || date.isAfter(today) ? null : DateTime(date.year, date.month, date.day),
       totalMinor: _minor(j['total']),
-      currency: (j['currency'] as String?)?.toUpperCase(),
+      currency: currency != null && RegExp(r'^[A-Z]{3}$').hasMatch(currency) ? currency : null,
       items: [
-        for (final i in (j['items'] as List?) ?? const [])
-          if (i is Map && i['name'] is String && _minor(i['amount']) != null)
+        for (final i in j['items'] is List ? j['items']! as List : const [])
+          if (i is Map && _text(i['name']) != null && _minor(i['amount']) != null)
             ReceiptItem(
-              name: (i['name'] as String).trim(),
-              quantity: (i['quantity'] as num?)?.toInt() ?? 1,
+              name: _text(i['name'])!,
+              quantity: _quantity(i['quantity']),
               amountMinor: _minor(i['amount'])!,
             ),
       ],

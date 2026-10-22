@@ -12,7 +12,11 @@ const _notItem = ['TOTAL', 'IGV', 'IVA', 'BASE', 'OP.', 'GRAVADA', 'EFECTIVO', '
 /// Prefijos de líneas que no son el nombre del comercio.
 const _notMerchant = ['RUC', 'CIF', 'NIF', 'AV.', 'AV ', 'CALLE', 'JR.', 'JR ', 'FECHA', 'BOLETA', 'FACTURA', 'TICKET', 'MESA', 'WWW'];
 
-final _amount = RegExp(r'\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+[.,]\d{1,2}|\d+');
+/// Líneas con TOTAL que no son el total pagado.
+const _notTotal = ['SUBTOTAL', 'ART', 'ITEM', 'IVA', 'IGV', 'DESC', 'CUOTA', 'BASE'];
+
+/// Importe con dos decimales ("23,45", "1.234,56").
+final _decimalAmount = RegExp(r'\d{1,3}(?:[.,]\d{3})*[.,]\d{2}\b');
 final _itemLine = RegExp(r'^(\d{1,3})\s+(.+?)\s+(\d+[.,]\d{2})\s*(?:EUR|PEN|USD|S/|€|\$)?$');
 
 /// Lectura local, sin red, de un ticket: el total de la línea TOTAL (no el
@@ -24,23 +28,31 @@ ReceiptData parseReceiptHeuristic(String text, {required DateTime now, required 
   ];
   final upper = text.toUpperCase();
 
-  final currency = upper.contains('S/') || upper.contains('PEN')
+  // Solo marcas explícitas: "S/N" (sin número) o "PENDIENTE" no son soles.
+  final currency = RegExp(r'S/\.?\s*\d|\bPEN\b').hasMatch(upper)
       ? 'PEN'
-      : upper.contains('EUR') || upper.contains('€')
+      : RegExp(r'\bEUR\b|€').hasMatch(upper)
           ? 'EUR'
-          : upper.contains('USD') || upper.contains('US\$')
+          : RegExp(r'\bUSD\b|US\$').hasMatch(upper)
               ? 'USD'
               : fallbackCurrency;
 
+  // El total es la primera línea TOTAL con un importe con decimales que no sea
+  // subtotal, contador de artículos ni desglose de impuestos; "TOTAL A PAGAR"
+  // e "IMPORTE TOTAL" tienen prioridad.
   int? total;
   var totalLine = lines.length;
+  var totalRank = 0;
   for (final (i, l) in lines.indexed) {
     final u = l.toUpperCase();
-    if (!RegExp(r'\bTOTAL\b').hasMatch(u) || u.contains('SUBTOTAL')) continue;
-    final last = _amount.allMatches(u.replaceAll(RegExp(r'\d+\s*%'), '')).lastOrNull;
-    if (last == null) continue;
-    total = parseAmountMinor(last.group(0)!);
+    if (!RegExp(r'\bTOTAL\b').hasMatch(u) || _notTotal.any(u.contains)) continue;
+    final amount = _decimalAmount.firstMatch(u.replaceAll(RegExp(r'\d+\s*%'), ''));
+    if (amount == null) continue;
+    final rank = u.contains('A PAGAR') || u.contains('IMPORTE TOTAL') ? 2 : 1;
+    if (rank <= totalRank) continue;
+    total = parseAmountMinor(amount.group(0)!);
     totalLine = i;
+    totalRank = rank;
   }
 
   String? merchant;

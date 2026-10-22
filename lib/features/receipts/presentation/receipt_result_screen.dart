@@ -199,7 +199,8 @@ class _ReceiptResultScreenState extends ConsumerState<ReceiptResultScreen> {
     final note = _itemsNote(currency);
     final movement = existing != null
         ? existing.copyWith(
-            amount: Money(_total.minor, currency),
+            // Se completa el pago tal como se registró: su moneda no cambia.
+            amount: Money(_total.minor, existing.amount.currency),
             title: merchant.isEmpty ? existing.title : merchant,
             note: [if (existing.note.isNotEmpty) existing.note, note].join('\n'),
             date: existing.date,
@@ -283,7 +284,25 @@ class _ReceiptResultScreenState extends ConsumerState<ReceiptResultScreen> {
           if (widget.receipt.fromAi || widget.readFailed)
             e(Center(
               child: widget.readFailed
-                  ? const StatusPill('No pudimos leer el ticket: complétalo a mano', tone: PillTone.danger)
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: ShapeDecoration(
+                        color: AppColors.dangerSoft,
+                        shape: RoundedSuperellipseBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(LucideIcons.scanText, size: 18, color: AppColors.danger),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'No pudimos leer el ticket. Complétalo a mano o prueba con otra foto más nítida.',
+                              style: AppType.footnote.copyWith(color: AppColors.ink),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
                   : const StatusPill('Leído con IA', tone: PillTone.accent, icon: LucideIcons.sparkles),
             )),
           const SizedBox(height: 10),

@@ -117,7 +117,7 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
       case QuickAction.income:
         showMovementSheet(nav.context, kind: MovementKind.income);
       case QuickAction.ticket:
-        showScanReceipt(nav.context, ref);
+        showScanReceipt(nav.context);
     }
   }
 

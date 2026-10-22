@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:outflow/core/di/core_providers.dart';
 import 'package:outflow/core/domain/money.dart';
+import 'package:outflow/features/receipts/data/gemini_receipt_reader.dart';
+import 'package:outflow/features/receipts/data/text_recognizer.dart';
 import 'package:outflow/features/receipts/domain/receipt.dart';
+import 'package:outflow/features/wallet/presentation/widgets/movement_sheet.dart';
 import 'package:outflow/features/receipts/presentation/receipt_result_screen.dart';
 import 'package:outflow/features/receipts/presentation/scan_receipt_flow.dart';
 import 'package:outflow/features/wallet/domain/default_categories.dart';
@@ -14,6 +18,7 @@ import 'package:outflow/features/wallet/presentation/wallet_providers.dart';
 import 'support/fakes.dart';
 
 void main() {
+  reviewFixes();
   final now = DateTime(2026, 10, 20, 19);
   final receipt = ReceiptData(
     merchant: 'Bodega San Martín',
@@ -27,7 +32,14 @@ void main() {
     fromAi: true,
   );
 
-  Future<MemoryMovements> pump(WidgetTester tester, {List<Movement> existing = const [], Widget? home}) async {
+  Future<MemoryMovements> pump(
+    WidgetTester tester, {
+    List<Movement> existing = const [],
+    Widget? home,
+    Future<String?> Function(bool)? picker,
+    TextRecognizer? recognizer,
+    ReceiptReader? reader,
+  }) async {
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
@@ -38,7 +50,9 @@ void main() {
         movementRepositoryProvider.overrideWithValue(movements),
         walletSettingsRepositoryProvider.overrideWithValue(MemorySettings(const WalletSettings())),
         categoriesProvider.overrideWith((ref) => Stream.value(defaultCategories())),
-        imagePickerProvider.overrideWithValue((_) async => null),
+        imagePickerProvider.overrideWithValue(picker ?? (_) async => null),
+        if (recognizer != null) textRecognizerProvider.overrideWithValue(recognizer),
+        if (reader != null) receiptReaderProvider.overrideWithValue(reader),
       ],
       child: MaterialApp(home: home ?? ReceiptResultScreen(receipt: receipt)),
     ));
@@ -64,7 +78,7 @@ void main() {
     final applePay = Movement(
       id: 'ap',
       kind: MovementKind.expense,
-      amount: const Money(4590, 'PEN'),
+      amount: const Money(4590, 'USD'),
       categoryId: 'groceries',
       date: now.subtract(const Duration(hours: 1)),
       createdAt: now.subtract(const Duration(hours: 1)),
@@ -83,6 +97,7 @@ void main() {
     expect(m.title, 'Bodega San Martín');
     expect(m.note, contains('Gaseosa 500ml'));
     expect(m.origin, MovementOrigin.applePay);
+    expect(m.amount.currency, 'USD', reason: 'se completa sin cambiarle la moneda');
   });
 
   testWidgets('"No, es otro" crea un gasto nuevo', (tester) async {
@@ -108,7 +123,7 @@ void main() {
       tester,
       home: Consumer(
         builder: (context, ref, _) => TextButton(
-          onPressed: () => scanReceipt(context, ref, fromCamera: true),
+          onPressed: () => scanReceipt(context, fromCamera: true),
           child: const Text('escanear'),
         ),
       ),
@@ -117,5 +132,79 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('escanear'), findsOneWidget);
     expect(find.textContaining('Leyendo'), findsNothing);
+  });
+}
+
+class _BlankText implements TextRecognizer {
+  @override
+  Future<String> recognize(String imagePath) async => '   ';
+}
+
+class _CountingReader implements ReceiptReader {
+  int calls = 0;
+  @override
+  Future<ReceiptData> read(String text, {required DateTime now, required String fallbackCurrency}) async {
+    calls++;
+    return const ReceiptData(merchant: 'Inventado', totalMinor: 999);
+  }
+}
+
+void reviewFixes() {
+  final now = DateTime(2026, 10, 20, 19);
+
+  Future<void> pumpWith(WidgetTester tester, Widget home, List<Override> overrides) async {
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        nowProvider.overrideWithValue(now),
+        movementRepositoryProvider.overrideWithValue(MemoryMovements()),
+        walletSettingsRepositoryProvider.overrideWithValue(MemorySettings(const WalletSettings())),
+        categoriesProvider.overrideWith((ref) => Stream.value(defaultCategories())),
+        ...overrides,
+      ],
+      child: MaterialApp(home: home),
+    ));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('el botón de escanear de la hoja de gasto abre la cámara', (tester) async {
+    var opened = false;
+    await pumpWith(
+      tester,
+      Builder(builder: (context) => TextButton(onPressed: () => showMovementSheet(context), child: const Text('gasto'))),
+      [
+        imagePickerProvider.overrideWithValue((fromCamera) async {
+          opened = fromCamera;
+          return null;
+        }),
+      ],
+    );
+    await tester.tap(find.text('gasto'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Escanear ticket'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tomar foto'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(opened, isTrue);
+  });
+
+  testWidgets('sin texto en la foto no se llama a la IA y se avisa', (tester) async {
+    final reader = _CountingReader();
+    await pumpWith(
+      tester,
+      Builder(builder: (context) => TextButton(onPressed: () => scanReceipt(context, fromCamera: false), child: const Text('escanear'))),
+      [
+        imagePickerProvider.overrideWithValue((_) async => '/no/existe.jpg'),
+        textRecognizerProvider.overrideWithValue(_BlankText()),
+        receiptReaderProvider.overrideWithValue(reader),
+      ],
+    );
+    await tester.tap(find.text('escanear'));
+    await tester.pumpAndSettle();
+    expect(reader.calls, 0);
+    expect(find.textContaining('No pudimos leer el ticket'), findsOneWidget);
   });
 }

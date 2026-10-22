@@ -196,7 +196,7 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
                     // Cambia a escanear: cierra la hoja vacía y abre la cámara/galería.
                     final root = Navigator.of(context, rootNavigator: true).context;
                     Navigator.of(context).pop();
-                    showScanReceipt(root, ref);
+                    showScanReceipt(root);
                   },
                 )
               : null,

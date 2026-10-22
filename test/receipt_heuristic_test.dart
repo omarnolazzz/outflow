@@ -41,6 +41,7 @@ VUELTO S/ 4.10
 ''';
 
 void main() {
+  reviewFixes();
   final now = DateTime(2026, 10, 22);
 
   ReceiptData parse(String t) => parseReceiptHeuristic(t, now: now, fallbackCurrency: 'PEN');
@@ -93,5 +94,38 @@ void main() {
     expect(merged.totalMinor, 9300);
     expect(merged.items, isNotEmpty);
     expect(merged.fromAi, isTrue);
+  });
+}
+
+const mercadona = '''
+MERCADONA, S.A. A-46103834
+C/ MAYOR 12 S/N 28013 MADRID
+TELÉFONO: 910000000
+12/10/2026 19:05 OP: 123456
+FACTURA SIMPLIFICADA: 1234-567-890123
+1 LECHE ENTERA 0,95
+2 PAN DE BARRA 1,20
+1 ACEITE OLIVA 8,95
+TOTAL ARTICULOS 4
+TOTAL (€) 23,45
+TARJETA BANCARIA 23,45
+IVA BASE IMPONIBLE (€) CUOTA (€)
+4% 8,00 0,32
+10% 13,74 1,37
+TOTAL 21,74 1,69
+''';
+
+void reviewFixes() {
+  final now = DateTime(2026, 10, 22);
+  ReceiptData parse(String t, {String fallback = 'PEN'}) =>
+      parseReceiptHeuristic(t, now: now, fallbackCurrency: fallback);
+
+  test('el total es el del ticket, no el contador de artículos ni el desglose de IVA', () {
+    expect(parse(mercadona, fallback: 'EUR').totalMinor, 2345);
+  });
+
+  test('"S/N" de una dirección o "PENDIENTE" no cambian la moneda', () {
+    expect(parse('BAR PEPE\nC/ SOL S/N\nTOTAL 5,00', fallback: 'EUR').currency, 'EUR');
+    expect(parse('TIENDA X\nPAGO PENDIENTE\nTOTAL 5.00', fallback: 'USD').currency, 'USD');
   });
 }

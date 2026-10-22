@@ -29,7 +29,10 @@ final imagePickerProvider = Provider<Future<String?> Function(bool fromCamera)>(
     });
 
 /// "Escanear ticket": pregunta cámara o galería y sigue el flujo.
-Future<void> showScanReceipt(BuildContext context, WidgetRef ref) async {
+///
+/// Recibe un contexto que siga montado durante todo el flujo (el del navegador
+/// raíz), no el de una hoja que se cierra: no usa su `ref`.
+Future<void> showScanReceipt(BuildContext context) async {
   final fromCamera = await showModalBottomSheet<bool>(
     context: context,
     useRootNavigator: true,
@@ -62,14 +65,15 @@ Future<void> showScanReceipt(BuildContext context, WidgetRef ref) async {
     ),
   );
   if (fromCamera == null || !context.mounted) return;
-  await scanReceipt(context, ref, fromCamera: fromCamera);
+  await scanReceipt(context, fromCamera: fromCamera);
 }
 
 /// Toma o elige la foto y abre la lectura. Cancelar no hace nada.
-Future<void> scanReceipt(BuildContext context, WidgetRef ref, {required bool fromCamera}) async {
+Future<void> scanReceipt(BuildContext context, {required bool fromCamera}) async {
+  final container = ProviderScope.containerOf(context, listen: false);
   String? path;
   try {
-    path = await ref.read(imagePickerProvider)(fromCamera);
+    path = await container.read(imagePickerProvider)(fromCamera);
   } on PlatformException {
     if (context.mounted) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
@@ -117,7 +121,12 @@ class _ReadingScreenState extends ConsumerState<_ReadingScreen> with SingleTicke
     var failed = false;
     try {
       final text = await ref.read(textRecognizerProvider).recognize(widget.path);
-      receipt = await ref.read(receiptReaderProvider).read(text, now: now, fallbackCurrency: currency);
+      // Sin texto no hay nada que leer: no se pregunta a la IA (podría inventar).
+      if (text.trim().isEmpty) {
+        failed = true;
+      } else {
+        receipt = await ref.read(receiptReaderProvider).read(text, now: now, fallbackCurrency: currency);
+      }
     } on TextRecognitionFailed {
       failed = true;
     }
@@ -132,7 +141,10 @@ class _ReadingScreenState extends ConsumerState<_ReadingScreen> with SingleTicke
   @override
   Widget build(BuildContext context) {
     final reduced = AppMotion.reduced(context);
-    final image = kIsWeb ? Image.network(widget.path, fit: BoxFit.cover) : Image.file(File(widget.path), fit: BoxFit.cover);
+    Widget broken(BuildContext _, Object _, StackTrace? _) => const ColoredBox(color: AppColors.inkSecondary);
+    final image = kIsWeb
+        ? Image.network(widget.path, fit: BoxFit.cover, errorBuilder: broken)
+        : Image.file(File(widget.path), fit: BoxFit.cover, errorBuilder: broken);
     return Scaffold(
       backgroundColor: AppColors.ink,
       body: SafeArea(

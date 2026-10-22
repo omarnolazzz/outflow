@@ -21,6 +21,7 @@ String geminiReply(Map<String, Object?> json) => jsonEncode({
     });
 
 void main() {
+  reviewFixes();
   final now = DateTime(2026, 10, 22);
 
   test('respuesta válida: datos de la IA; la petición lleva el texto y ninguna imagen', () async {
@@ -79,5 +80,39 @@ void main() {
     final r = await const LocalReceiptReader().read(ticket, now: now, fallbackCurrency: 'PEN');
     expect(r.fromAi, isFalse);
     expect(r.totalMinor, 4590);
+  });
+}
+
+void reviewFixes() {
+  final now = DateTime(2026, 10, 22);
+  Future<dynamic> read(Map<String, Object?> reply, {String text = ticket}) =>
+      GeminiReceiptReader(MockClient((_) async => http.Response(geminiReply(reply), 200)), apiKey: 'k', model: 'm')
+          .read(text, now: now, fallbackCurrency: 'PEN');
+
+  test('un total 0 de la IA no tapa el total leído en el ticket', () async {
+    expect((await read({'total': 0})).totalMinor, 4590);
+  });
+
+  test('un campo con tipo inesperado no tira el resto de datos de la IA', () async {
+    final r = await read({
+      'merchant': 123,
+      'total': 45.9,
+      'items': [
+        {'name': 'Gaseosa', 'quantity': '2', 'amount': 7},
+      ],
+    });
+    expect(r.fromAi, isTrue);
+    expect(r.merchant, 'BODEGA SAN MARTIN');
+    expect(r.items.single.quantity, 2);
+  });
+
+  test('una moneda no ISO de la IA se ignora', () async {
+    expect((await read({'total': 45.9, 'currency': 'S/'})).currency, 'PEN');
+    expect((await read({'total': 45.9, 'currency': ''})).currency, 'PEN');
+  });
+
+  test('si el ticket trae fecha día/mes, manda la del ticket', () async {
+    final r = await read({'total': 45.9, 'date': '2026-08-10'}, text: 'BODEGA\n08/10/2026\nTOTAL S/ 45.90');
+    expect(r.date, DateTime(2026, 10, 8));
   });
 }
