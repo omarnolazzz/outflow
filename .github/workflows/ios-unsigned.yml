@@ -38,9 +38,7 @@ jobs:
         if: env.GOOGLE_REVERSED_CLIENT_ID != ''
         run: |
           P=ios/Runner/Info.plist
-          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$P"
-          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$P"
-          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$P"
+          # Info.plist ya declara el esquema outflow:// (atajo de Apple Pay); se añade el de Google a esa lista.
           /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string $GOOGLE_REVERSED_CLIENT_ID" "$P"
           /usr/libexec/PlistBuddy -c "Add :GIDClientID string $GOOGLE_IOS_CLIENT_ID" "$P"
 

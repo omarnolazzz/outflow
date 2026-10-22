@@ -19,6 +19,8 @@ import 'features/onboarding/presentation/onboarding_flow.dart';
 import 'features/shell/presentation/app_shell.dart';
 import 'features/wallet/presentation/screens/movements_screen.dart';
 import 'features/wallet/presentation/screens/summary_screen.dart';
+import 'features/wallet/domain/apple_pay_link.dart';
+import 'features/wallet/presentation/deep_link_provider.dart';
 import 'features/wallet/presentation/wallet_providers.dart';
 import 'features/wallet/presentation/widgets/movement_sheet.dart';
 import 'features/wallet/domain/movement.dart';
@@ -41,6 +43,10 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
   late final AppLifecycleListener _lifecycle;
   StreamSubscription<String>? _tapSub;
   StreamSubscription<ChargeAnswer>? _answerSub;
+  StreamSubscription<Uri>? _linkSub;
+
+  /// Pago de Apple Pay llegado con la app bloqueada: se abre al desbloquear.
+  final _pendingLink = PendingLink();
 
   /// Gracia antes de re-bloquear al volver (cambiar de app un momento no pide PIN).
   static const _relockAfter = Duration(seconds: 30);
@@ -72,6 +78,7 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
     // abierta; los pulsados con la app cerrada esperan en la bandeja.
     final actions = ref.read(subscriptionActionsProvider);
     _answerSub = notifications.answers.listen(actions.applyAnswer);
+    _linkSub = ref.read(incomingLinksProvider).listen(_onLink);
     _applyQueuedAnswers();
   }
 
@@ -111,6 +118,20 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
     }
   }
 
+  /// `outflow://gasto?…` del atajo de Apple Pay: hoja de gasto rellenada.
+  void _onLink(Uri uri) {
+    final currency = ref.read(walletSettingsRepositoryProvider).read().currency;
+    final draft = parseApplePayLink(uri, fallbackCurrency: currency, now: DateTime.now());
+    if (draft == null) return;
+    final now = _pendingLink.offer(draft, ready: ref.read(sessionControllerProvider) is Ready);
+    if (now != null) _openDraft(now);
+  }
+
+  void _openDraft(MovementDraft draft) {
+    final context = _navigator.currentContext;
+    if (context != null) showMovementSheet(context, draft: draft);
+  }
+
   void _openFromNotification(String subscriptionId) {
     if (ref.read(sessionControllerProvider) is Ready) {
       _navigator.currentState?.push(
@@ -126,6 +147,7 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
     _lifecycle.dispose();
     _tapSub?.cancel();
     _answerSub?.cancel();
+    _linkSub?.cancel();
     super.dispose();
   }
 
@@ -138,6 +160,10 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
     ref.watch(chargeMovementSyncProvider);
 
     ref.listen(sessionControllerProvider, (prev, next) {
+      if (next is Ready) {
+        final draft = _pendingLink.onReady();
+        if (draft != null) WidgetsBinding.instance.addPostFrameCallback((_) => _openDraft(draft));
+      }
       if (next is Ready && _pendingSubscriptionId != null) {
         final id = _pendingSubscriptionId!;
         _pendingSubscriptionId = null;

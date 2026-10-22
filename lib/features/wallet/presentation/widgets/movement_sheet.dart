@@ -19,22 +19,32 @@ import '../../../../core/widgets/primary_button.dart';
 import '../../../../core/widgets/segmented_control.dart';
 import '../../../../core/widgets/sheet_scaffold.dart';
 import '../../../../core/widgets/surface_card.dart';
+import '../../domain/apple_pay_link.dart';
 import '../../domain/category.dart';
+import '../../domain/expense_hints.dart';
 import '../../domain/movement.dart';
 import '../wallet_providers.dart';
 import 'category_icon.dart';
 
 /// Abre la hoja para registrar (o editar) un gasto o ingreso.
-Future<void> showMovementSheet(BuildContext context, {MovementKind kind = MovementKind.expense, Movement? editing}) =>
+Future<void> showMovementSheet(
+  BuildContext context, {
+  MovementKind kind = MovementKind.expense,
+  Movement? editing,
+  MovementDraft? draft,
+}) =>
     Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(
       fullscreenDialog: true,
-      builder: (_) => MovementSheet(kind: editing?.kind ?? kind, editing: editing),
+      builder: (_) => MovementSheet(kind: editing?.kind ?? kind, editing: editing, draft: draft),
     ));
 
 class MovementSheet extends ConsumerStatefulWidget {
-  const MovementSheet({super.key, required this.kind, this.editing});
+  const MovementSheet({super.key, required this.kind, this.editing, this.draft});
   final MovementKind kind;
   final Movement? editing;
+
+  /// Gasto llegado de fuera (atajo de Apple Pay, ticket) para confirmar.
+  final MovementDraft? draft;
 
   @override
   ConsumerState<MovementSheet> createState() => _MovementSheetState();
@@ -42,12 +52,15 @@ class MovementSheet extends ConsumerStatefulWidget {
 
 class _MovementSheetState extends ConsumerState<MovementSheet> {
   late MovementKind _kind = widget.kind;
-  late final AmountInput _amount = AmountInput()..setMinor(widget.editing?.amount.minor ?? 0);
-  late final _title = TextEditingController(text: widget.editing?.title ?? '');
-  late final _note = TextEditingController(text: widget.editing?.note ?? '');
+  late final AmountInput _amount = AmountInput()..setMinor(widget.editing?.amount.minor ?? widget.draft?.amountMinor ?? 0);
+  late final _title = TextEditingController(text: widget.editing?.title ?? widget.draft?.title ?? '');
+  late final _note = TextEditingController(text: widget.editing?.note ?? widget.draft?.note ?? '');
   String? _categoryId;
   DateTime? _date;
   bool _saving = false;
+
+  /// La categoría del comercio del borrador ya se propuso (una vez, al cargar).
+  bool _suggested = false;
 
   Movement? get _e => widget.editing;
 
@@ -58,8 +71,8 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
   void initState() {
     super.initState();
     _amount.addListener(() => setState(() {}));
-    _categoryId = _e?.categoryId;
-    _date = _e?.date;
+    _categoryId = _e?.categoryId ?? widget.draft?.categoryId;
+    _date = _e?.date ?? widget.draft?.date;
   }
 
   @override
@@ -79,6 +92,18 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
     return recent.firstOrNull?.categoryId ?? options.firstOrNull?.id;
   }
 
+  /// Solo para gastos que llegan de fuera: el mismo pago apuntado hace poco.
+  Movement? _duplicate(DateTime now) {
+    final d = widget.draft;
+    if (d == null || _e != null || _amount.minor <= 0) return null;
+    return findRecentDuplicate(
+      movements: ref.watch(movementsProvider).value ?? const [],
+      amountMinor: _amount.minor,
+      merchant: _title.text,
+      now: now,
+    );
+  }
+
   Future<void> _pickDate(DateTime current) async {
     final picked = await showDatePicker(
       context: context,
@@ -94,7 +119,7 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
     final now = ref.read(nowProvider);
     // Conserva la hora si se registra hoy (ordena bien los de un mismo día).
     final when = DateUtils.isSameDay(date, now) && _e == null ? now : date;
-    final money = Money(_amount.minor, _e?.amount.currency ?? currency);
+    final money = Money(_amount.minor, _e?.amount.currency ?? widget.draft?.currency ?? currency);
     final movement = _e == null
         ? Movement(
             id: const Uuid().v4(),
@@ -104,6 +129,7 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
             date: when,
             title: _title.text.trim(),
             note: _note.text.trim(),
+            origin: widget.draft?.origin ?? MovementOrigin.manual,
             createdAt: now,
           )
         : _e!.copyWith(
@@ -142,6 +168,15 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
     final currency = ref.watch(walletSettingsProvider).value?.currency ?? 'PEN';
     final now = ref.watch(nowProvider);
     final all = ref.watch(categoriesProvider).value ?? const <Category>[];
+    // Un gasto que llega de fuera propone la categoría de ese comercio.
+    if (!_suggested && all.isNotEmpty && widget.draft != null) {
+      _suggested = true;
+      _categoryId ??= suggestCategory(
+        merchant: widget.draft!.title,
+        history: ref.read(movementsProvider).value ?? const [],
+        categories: all,
+      );
+    }
     final options = all.where((c) => c.kind == _kind && (!c.reserved || c.id == _categoryId)).toList();
     final categoryId = options.any((c) => c.id == _categoryId) ? _categoryId : _defaultCategory(options);
     final date = _date ?? now;
@@ -192,11 +227,34 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
                     fontSize: 52,
                     color: _amount.isEmpty ? AppColors.inkTertiary : (isExpense ? AppColors.ink : AppColors.income),
                   ),
-                  child: Text('${isExpense ? '' : '+'}${_amount.display(_e?.amount.currency ?? currency)}'),
+                  child: Text('${isExpense ? '' : '+'}${_amount.display(_e?.amount.currency ?? widget.draft?.currency ?? currency)}'),
                 ),
               ),
             ),
           ),
+          if (_duplicate(now) case final dup?) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: ShapeDecoration(
+                color: AppColors.dangerSoft,
+                shape: RoundedSuperellipseBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(LucideIcons.copy, size: 16, color: AppColors.danger),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Posible duplicado: ya registraste ${Fmt.money(dup.amount)} en ${dup.title} '
+                      'hace ${now.difference(dup.createdAt).inMinutes.clamp(1, 99)} min.',
+                      style: AppType.footnote.copyWith(color: AppColors.ink),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 18),
           if (!_isCharge)
             Entrance(
