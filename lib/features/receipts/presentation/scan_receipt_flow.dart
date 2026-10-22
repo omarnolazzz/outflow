@@ -45,7 +45,7 @@ Future<void> showScanReceipt(BuildContext context) async {
           children: [
             Text('Escanear ticket', style: AppType.title2),
             const SizedBox(height: 4),
-            Text('La foto se lee en tu iPhone y no se guarda.', style: AppType.subhead),
+            Text('La foto se lee en tu teléfono y no se guarda.', style: AppType.subhead),
             const SizedBox(height: 18),
             PrimaryButton(
               label: 'Tomar foto',
@@ -77,7 +77,7 @@ Future<void> scanReceipt(BuildContext context, {required bool fromCamera}) async
   } on PlatformException {
     if (context.mounted) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
-        content: Text('Outflow no tiene permiso para usar la cámara o las fotos. Actívalo en Ajustes del iPhone.'),
+        content: Text('Outflow no tiene permiso para usar la cámara o las fotos. Actívalo en los ajustes del teléfono.'),
       ));
     }
     return;
@@ -186,7 +186,7 @@ class _ReadingScreenState extends ConsumerState<_ReadingScreen> with SingleTicke
             Text('Leyendo ticket…', style: AppType.headline.copyWith(color: AppColors.onAccent)),
             const SizedBox(height: 6),
             Text(
-              'La foto se queda en tu iPhone.',
+              'La foto se queda en tu teléfono.',
               style: AppType.footnote.copyWith(color: AppColors.onAccent.withValues(alpha: 0.7)),
             ),
             const SizedBox(height: 32),

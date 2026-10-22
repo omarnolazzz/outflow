@@ -110,7 +110,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                   onTap: _busy == _Busy.none ? _google : null,
                 ),
               ),
-              // Sin Face ID activado, el código del iPhone siempre sirve (también sin red).
+              // Sin Face ID activado, el bloqueo del teléfono siempre sirve (también sin red).
               if (!widget.state.faceId) ...[
                 const SizedBox(height: 12),
                 Pressable(
@@ -119,7 +119,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     child: Text(
-                      'Usar el código del iPhone',
+                      'Usar el bloqueo del teléfono',
                       style: AppType.callout.copyWith(color: AppColors.accent, fontWeight: FontWeight.w600),
                     ),
                   ),

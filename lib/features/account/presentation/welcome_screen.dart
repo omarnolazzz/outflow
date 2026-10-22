@@ -81,7 +81,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                 Entrance(
                   index: 5,
                   child: Text(
-                    'Tus gastos se guardan cifrados en este iPhone.',
+                    'Tus gastos se guardan cifrados en este teléfono.',
                     textAlign: TextAlign.center,
                     style: AppType.caption.copyWith(color: AppColors.inkTertiary),
                   ),

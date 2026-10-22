@@ -33,7 +33,10 @@ class FirebaseAuthService implements AuthService {
   }
   Future<void>? _init;
 
-  Future<void> _ensureInit() => _init ??= _google.initialize(clientId: FirebaseConfig.iosClientId);
+  Future<void> _ensureInit() => _init ??= _google.initialize(
+        clientId: FirebaseConfig.googleClientId,
+        serverClientId: FirebaseConfig.googleServerClientId,
+      );
 
   static Account _toAccount(User u) => Account(
         uid: u.uid,

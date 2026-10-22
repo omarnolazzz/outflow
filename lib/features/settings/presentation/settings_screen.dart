@@ -17,10 +17,12 @@ import '../../account/presentation/session_controller.dart';
 import '../../notifications/domain/notification_rule.dart';
 import '../../notifications/presentation/notification_providers.dart';
 import '../../notifications/presentation/widgets/notification_rule_editor.dart';
+import '../../wallet/data/payment_listener.dart';
 import '../../wallet/domain/wallet_settings.dart';
 import '../../wallet/presentation/wallet_providers.dart';
 import 'apple_pay_guide_screen.dart';
 import 'category_editor_screen.dart';
+import 'google_pay_guide_screen.dart';
 
 /// Cuenta y ajustes: cuenta de Google, moneda, sobrante, Face ID, avisos y
 /// categorías. Aquí vivirán el atajo de Apple Pay (fase 2) y los amigos (fase 4).
@@ -78,7 +80,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('¿Cerrar sesión?'),
-        content: const Text('Tus datos siguen guardados en este iPhone. Vuelve a entrar con tu cuenta de Google cuando quieras.'),
+        content: const Text('Tus datos siguen guardados en este teléfono. Vuelve a entrar con tu cuenta de Google cuando quieras.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
           TextButton(
@@ -158,10 +160,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               label: 'Categorías',
               onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const CategoryEditorScreen())),
             ),
+            // iPhone: atajo de Apple Pay. Android: avisos de Google Pay y bancos.
             _Tile(
               icon: LucideIcons.smartphoneNfc,
-              label: 'Registrar pagos con Apple Pay',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ApplePayGuideScreen())),
+              label: isAndroidDevice ? 'Registrar pagos con Google Pay' : 'Registrar pagos con Apple Pay',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => isAndroidDevice ? const GooglePayGuideScreen() : const ApplePayGuideScreen(),
+              )),
               last: true,
             ),
           ])),
@@ -217,7 +222,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 8),
           e(Center(
             child: Text(
-              'Outflow · tus gastos se guardan cifrados en este iPhone',
+              'Outflow · tus gastos se guardan cifrados en este teléfono',
               style: AppType.caption.copyWith(color: AppColors.inkTertiary),
             ),
           )),

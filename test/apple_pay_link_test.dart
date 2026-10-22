@@ -67,6 +67,17 @@ void main() {
     expect(parse('S/. 12.50')!.currency, 'PEN');
   });
 
+  test('en Android el pago se guarda como Google Pay', () {
+    final d = parseApplePayLink(
+      Uri(scheme: 'outflow', host: 'gasto', queryParameters: {'importe': 'S/ 9.90', 'tarjeta': 'BCP'}),
+      fallbackCurrency: 'PEN',
+      now: now,
+      origin: MovementOrigin.googlePay,
+    )!;
+    expect(d.origin, MovementOrigin.googlePay);
+    expect(d.amountMinor, 990);
+  });
+
   test('otro enlace no es un pago', () {
     expect(parseApplePayLink(Uri.parse('outflow://otra?importe=5'), fallbackCurrency: 'PEN', now: now), isNull);
     expect(parseApplePayLink(Uri.parse('https://gasto?importe=5'), fallbackCurrency: 'PEN', now: now), isNull);

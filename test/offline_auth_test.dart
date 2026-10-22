@@ -13,7 +13,7 @@ void main() {
     await expectLater(service.signInWithGoogle(), throwsA(isA<AuthOffline>()));
   });
 
-  testWidgets('sin Face ID activado, el bloqueo ofrece siempre el código del iPhone', (tester) async {
+  testWidgets('sin Face ID activado, el bloqueo ofrece siempre el bloqueo del teléfono', (tester) async {
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
@@ -22,7 +22,7 @@ void main() {
       child: MaterialApp(home: LockScreen(state: Locked(account))),
     ));
     await tester.pumpAndSettle();
-    expect(find.text('Usar el código del iPhone'), findsOneWidget);
+    expect(find.text('Usar el bloqueo del teléfono'), findsOneWidget);
     expect(find.textContaining('Desbloquear con'), findsNothing);
   });
 }

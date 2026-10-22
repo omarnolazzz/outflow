@@ -25,14 +25,14 @@ class LocalBiometrics implements Biometrics {
   Future<String> label() async {
     try {
       final types = await _auth.getAvailableBiometrics();
-      if (types.contains(BiometricType.face)) return 'Face ID';
+      if (types.contains(BiometricType.face)) return defaultTargetPlatform == TargetPlatform.iOS ? 'Face ID' : 'tu rostro';
       if (types.contains(BiometricType.fingerprint)) {
-        return defaultTargetPlatform == TargetPlatform.iOS ? 'Touch ID' : 'Huella';
+        return defaultTargetPlatform == TargetPlatform.iOS ? 'Touch ID' : 'tu huella';
       }
     } on PlatformException {
       // Sin biometría: etiqueta genérica.
     }
-    return 'Face ID';
+    return defaultTargetPlatform == TargetPlatform.iOS ? 'Face ID' : 'tu huella';
   }
 
   @override

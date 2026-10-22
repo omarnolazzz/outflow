@@ -174,18 +174,38 @@ class LocalNotificationService {
     );
   }
 
-  NotificationDetails _details(String? body, {String? category}) => NotificationDetails(
-        android: AndroidNotificationDetails(
-          _channelId,
-          _channelName,
-          channelDescription: 'Avisos antes de cada cobro y del cierre de la ventana de cancelación',
-          importance: Importance.defaultImportance,
-          priority: Priority.defaultPriority,
-          styleInformation: body == null ? null : BigTextStyleInformation(body),
-          category: AndroidNotificationCategory.reminder,
-        ),
-        iOS: DarwinNotificationDetails(threadIdentifier: _channelId, categoryIdentifier: category),
-      );
+  NotificationDetails _details(String? body, {String? category}) => detailsFor(body, category: category);
+
+  /// Detalles por plataforma. En Android los botones van en cada aviso (en
+  /// iPhone salen de la categoría registrada al iniciar).
+  @visibleForTesting
+  static NotificationDetails detailsFor(String? body, {String? category}) {
+    // Sin interfaz: la respuesta se guarda en segundo plano, como en iPhone.
+    AndroidNotificationAction action(String id, String title) =>
+        AndroidNotificationAction(id, title, showsUserInterface: false, cancelNotification: true);
+    final actions = switch (category) {
+      _confirmTwo => [
+          action('yes', 'Sí, esa fecha'),
+          action('alt', 'Usar la 2ª fecha'),
+          action('cancel', 'Ya la cancelé'),
+        ],
+      _confirmOne => [action('yes', 'Sí, esa fecha'), action('cancel', 'Ya la cancelé')],
+      _ => null,
+    };
+    return NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channelId,
+        _channelName,
+        channelDescription: 'Avisos antes de cada cobro y del cierre de la ventana de cancelación',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+        styleInformation: body == null ? null : BigTextStyleInformation(body),
+        category: AndroidNotificationCategory.reminder,
+        actions: actions,
+      ),
+      iOS: DarwinNotificationDetails(threadIdentifier: _channelId, categoryIdentifier: category),
+    );
+  }
 
   Future<void> dispose() async {
     await _taps.close();

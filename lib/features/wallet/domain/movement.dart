@@ -6,7 +6,7 @@ enum MovementKind { expense, income }
 
 /// De dónde salió un movimiento. Los tres últimos se reservan para las fases
 /// 2–4 (atajo de Apple Pay, escáner de tickets, gastos divididos).
-enum MovementOrigin { manual, subscription, initialBalance, applePay, ticket, split }
+enum MovementOrigin { manual, subscription, initialBalance, applePay, ticket, split, googlePay }
 
 /// Un gasto o un ingreso. El importe siempre es positivo; el signo lo da [kind].
 @immutable

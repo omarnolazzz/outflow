@@ -90,7 +90,7 @@ class _CurrencyStep extends StatelessWidget {
               child: _ChoiceCard(
                 selected: c.currency == code,
                 onTap: () => c.setCurrency(code),
-                leading: Text(Fmt.symbol(code), style: AppType.headline),
+                leading: FittedBox(fit: BoxFit.scaleDown, child: Text(Fmt.symbol(code), maxLines: 1, style: AppType.headline)),
                 title: _currencyNames[code] ?? code,
                 subtitle: code,
               ),

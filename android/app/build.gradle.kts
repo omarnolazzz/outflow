@@ -1,3 +1,12 @@
+import java.util.Properties
+
+// Firma de release: android/key.properties (local, fuera de git) o la ruta en
+// OUTFLOW_KEY_PROPERTIES (CI). Sin ella se firma con la clave de depuración.
+val keyProps = Properties().apply {
+    val f = System.getenv("OUTFLOW_KEY_PROPERTIES")?.let { file(it) } ?: rootProject.file("key.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -17,8 +26,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.outflow.outflow"
+        applicationId = "com.gabrielnolazco.outflow"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // local_auth y flutter_secure_storage requieren API 24+.
@@ -32,11 +40,21 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (!keyProps.isEmpty) {
+                storeFile = file(keyProps.getProperty("storeFile"))
+                storePassword = keyProps.getProperty("storePassword")
+                keyAlias = keyProps.getProperty("keyAlias")
+                keyPassword = keyProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // La huella (SHA-1) de esta clave está registrada en Firebase para "Continuar con Google".
+            signingConfig = signingConfigs.getByName(if (keyProps.isEmpty) "debug" else "release")
         }
     }
 }
@@ -53,4 +71,8 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    // Lectura de tickets en el teléfono (modelo incluido, sin red).
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("androidx.core:core-ktx:1.13.1")
+    testImplementation("junit:junit:4.13.2")
 }

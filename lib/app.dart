@@ -21,6 +21,7 @@ import 'features/shell/presentation/app_shell.dart';
 import 'features/wallet/presentation/screens/movements_screen.dart';
 import 'features/wallet/presentation/screens/summary_screen.dart';
 import 'features/wallet/domain/apple_pay_link.dart';
+import 'features/wallet/data/payment_listener.dart';
 import 'features/wallet/presentation/deep_link_provider.dart';
 import 'features/wallet/presentation/wallet_providers.dart';
 import 'features/wallet/presentation/widgets/movement_sheet.dart';
@@ -124,7 +125,13 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
   /// `outflow://gasto?…` del atajo de Apple Pay: hoja de gasto rellenada.
   void _onLink(Uri uri) {
     final currency = ref.read(walletSettingsRepositoryProvider).read().currency;
-    final draft = parseApplePayLink(uri, fallbackCurrency: currency, now: DateTime.now());
+    // En Android los pagos llegan de los avisos de Google Pay y de los bancos.
+    final draft = parseApplePayLink(
+      uri,
+      fallbackCurrency: currency,
+      now: DateTime.now(),
+      origin: isAndroidDevice ? MovementOrigin.googlePay : MovementOrigin.applePay,
+    );
     if (draft == null) return;
     final now = _pendingLink.offer(draft, ready: ref.read(sessionControllerProvider) is Ready);
     if (now != null) _openDraft(now);

@@ -63,7 +63,12 @@ const _dollarSign = {'USD', 'MXN', 'CLP', 'COP', 'ARS'};
 
 /// `outflow://gasto?importe=…&comercio=…&tarjeta=…` (automatización
 /// "Transacción" de Atajos) → borrador de gasto. null si es otro enlace.
-MovementDraft? parseApplePayLink(Uri uri, {required String fallbackCurrency, required DateTime now}) {
+MovementDraft? parseApplePayLink(
+  Uri uri, {
+  required String fallbackCurrency,
+  required DateTime now,
+  MovementOrigin origin = MovementOrigin.applePay,
+}) {
   if (uri.scheme != 'outflow' || uri.host != 'gasto') return null;
   final raw = (uri.queryParameters['importe'] ?? '').trim();
   final card = (uri.queryParameters['tarjeta'] ?? '').trim();
@@ -84,7 +89,7 @@ MovementDraft? parseApplePayLink(Uri uri, {required String fallbackCurrency, req
     currency: currency ?? fallbackCurrency,
     title: (uri.queryParameters['comercio'] ?? '').trim(),
     date: now,
-    origin: MovementOrigin.applePay,
+    origin: origin,
     note: card.isEmpty ? '' : 'Tarjeta: $card',
   );
 }
