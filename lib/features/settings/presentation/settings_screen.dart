@@ -19,6 +19,7 @@ import '../../notifications/presentation/notification_providers.dart';
 import '../../notifications/presentation/widgets/notification_rule_editor.dart';
 import '../../wallet/domain/wallet_settings.dart';
 import '../../wallet/presentation/wallet_providers.dart';
+import 'apple_pay_guide_screen.dart';
 import 'category_editor_screen.dart';
 
 /// Cuenta y ajustes: cuenta de Google, moneda, sobrante, Face ID, avisos y
@@ -156,6 +157,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               icon: LucideIcons.tags,
               label: 'Categorías',
               onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const CategoryEditorScreen())),
+            ),
+            _Tile(
+              icon: LucideIcons.smartphoneNfc,
+              label: 'Registrar pagos con Apple Pay',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ApplePayGuideScreen())),
               last: true,
             ),
           ])),
