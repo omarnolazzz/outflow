@@ -16,6 +16,7 @@ import 'features/account/presentation/welcome_screen.dart';
 import 'features/notifications/data/charge_answer_inbox.dart';
 import 'features/merchants/presentation/screens/catalog_screen.dart';
 import 'features/onboarding/presentation/onboarding_flow.dart';
+import 'features/receipts/presentation/scan_receipt_flow.dart';
 import 'features/shell/presentation/app_shell.dart';
 import 'features/wallet/presentation/screens/movements_screen.dart';
 import 'features/wallet/presentation/screens/summary_screen.dart';
@@ -115,6 +116,8 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
         showMovementSheet(nav.context);
       case QuickAction.income:
         showMovementSheet(nav.context, kind: MovementKind.income);
+      case QuickAction.ticket:
+        showScanReceipt(nav.context, ref);
     }
   }
 

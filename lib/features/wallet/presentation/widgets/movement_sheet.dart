@@ -19,6 +19,7 @@ import '../../../../core/widgets/primary_button.dart';
 import '../../../../core/widgets/segmented_control.dart';
 import '../../../../core/widgets/sheet_scaffold.dart';
 import '../../../../core/widgets/surface_card.dart';
+import '../../../receipts/presentation/scan_receipt_flow.dart';
 import '../../domain/apple_pay_link.dart';
 import '../../domain/category.dart';
 import '../../domain/expense_hints.dart';
@@ -185,9 +186,20 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
     return SheetScaffold(
       title: _e == null ? (isExpense ? 'Nuevo gasto' : 'Nuevo ingreso') : 'Editar',
       closeIcon: true,
-      trailing: _e == null
-          ? null
-          : CircleIconButton(icon: LucideIcons.trash2, label: 'Borrar', onTap: _delete),
+      trailing: _e != null
+          ? CircleIconButton(icon: LucideIcons.trash2, label: 'Borrar', onTap: _delete)
+          : widget.draft == null && isExpense
+              ? CircleIconButton(
+                  icon: LucideIcons.scanLine,
+                  label: 'Escanear ticket',
+                  onTap: () {
+                    // Cambia a escanear: cierra la hoja vacía y abre la cámara/galería.
+                    final root = Navigator.of(context, rootNavigator: true).context;
+                    Navigator.of(context).pop();
+                    showScanReceipt(root, ref);
+                  },
+                )
+              : null,
       bottom: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
