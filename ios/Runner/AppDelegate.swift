@@ -15,5 +15,9 @@ import UserNotifications
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    // Lectura de tickets en el iPhone (canal outflow/ocr).
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "TextRecognitionPlugin") {
+      TextRecognitionPlugin.register(with: registrar)
+    }
   }
 }

@@ -19,6 +19,10 @@
 	<false/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Outflow usa la cámara para fotografiar tus tickets y registrar el gasto. La foto no sale de tu iPhone.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Outflow usa tus fotos para leer tickets de compra. La foto no sale de tu iPhone.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Outflow usa Face ID para proteger tus datos financieros.</string>
 	<key>CFBundleDisplayName</key>
