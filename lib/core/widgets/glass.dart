@@ -1,8 +1,54 @@
 import 'dart:ui' show ImageFilter;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
 
 import '../theme/app_colors.dart';
+
+/// En iPhone la barra inferior usa Liquid Glass (refracción en el borde,
+/// brillo y escarcha); en el resto de plataformas, el cristal de siempre.
+bool get useLiquidGlass => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+/// Ajustes del cristal líquido de la barra (material "regular" de iOS, claro).
+final kBarLiquidSettings = LiquidGlassSettings.ios27Regular(brightness: Brightness.light);
+
+/// Agrupa las piezas de [BarGlass] para que compartan una sola muestra del
+/// fondo (lo caro) y se fundan como gotas al acercarse.
+class BarGlassLayer extends StatelessWidget {
+  const BarGlassLayer({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => useLiquidGlass
+      ? LiquidGlassLayer(settings: kBarLiquidSettings, child: LiquidGlassBlendGroup(child: child))
+      : child;
+}
+
+/// Superficie de la barra flotante: Liquid Glass en iPhone, [Glass] en otros.
+class BarGlass extends StatelessWidget {
+  const BarGlass({super.key, required this.child, required this.radius, this.tint});
+
+  final Widget child;
+  final double radius;
+
+  /// Color del cristal (el botón "+" va teñido); null = cristal neutro.
+  final Color? tint;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!useLiquidGlass) {
+      return Glass(radius: BorderRadius.circular(radius), tint: tint ?? AppColors.glassTint, child: child);
+    }
+    return LiquidGlass.auto(
+      settings: kBarLiquidSettings,
+      shape: LiquidRoundedSuperellipse(borderRadius: radius),
+      appearance: tint == null ? null : LiquidGlassAppearance.ios27Regular(brightness: Brightness.light, tint: tint!),
+      shadows: const [BoxShadow(color: Color(0x1F000000), offset: Offset(0, 6), blurRadius: 20)],
+      child: child,
+    );
+  }
+}
 
 /// Material de cristal: desenfoca lo que hay detrás, lo tiñe de blanco
 /// translúcido y lo remata con un borde fino luminoso.

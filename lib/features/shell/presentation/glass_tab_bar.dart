@@ -35,8 +35,8 @@ class GlassTabBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final reduced = AppMotion.reduced(context);
     const tabs = AppTab.values;
-    return Glass(
-      radius: BorderRadius.circular(kTabBarHeight / 2),
+    return BarGlass(
+      radius: kTabBarHeight / 2,
       child: SizedBox(
         height: kTabBarHeight,
         child: LayoutBuilder(

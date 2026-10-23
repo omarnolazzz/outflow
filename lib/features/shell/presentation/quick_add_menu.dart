@@ -36,8 +36,8 @@ class QuickAddButton extends StatelessWidget {
         scale: 0.9,
         borderRadius: BorderRadius.circular(kTabBarHeight / 2),
         semanticLabel: 'Añadir',
-        child: Glass(
-          radius: BorderRadius.circular(kTabBarHeight / 2),
+        child: BarGlass(
+          radius: kTabBarHeight / 2,
           tint: open ? AppColors.ink.withValues(alpha: 0.85) : AppColors.accent.withValues(alpha: 0.92),
           child: SizedBox.square(
             dimension: kTabBarHeight,

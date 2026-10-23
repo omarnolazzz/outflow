@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/glass.dart';
 import 'glass_tab_bar.dart';
 import 'quick_add_menu.dart';
 
@@ -124,12 +125,14 @@ class _AppShellState extends State<AppShell> {
                 left: 16,
                 right: 16,
                 bottom: barBottom,
-                child: Row(
-                  children: [
-                    Expanded(child: GlassTabBar(current: _tab, onSelect: _select)),
-                    const SizedBox(width: 10),
-                    QuickAddButton(open: _menu, onTap: () => setState(() => _menu = !_menu)),
-                  ],
+                child: BarGlassLayer(
+                  child: Row(
+                    children: [
+                      Expanded(child: GlassTabBar(current: _tab, onSelect: _select)),
+                      const SizedBox(width: 10),
+                      QuickAddButton(open: _menu, onTap: () => setState(() => _menu = !_menu)),
+                    ],
+                  ),
                 ),
               ),
             ],
