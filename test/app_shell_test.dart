@@ -47,11 +47,17 @@ void main() {
     expect(find.text('home 1'), findsOneWidget);
   });
 
-  testWidgets('las 4 pestañas tienen su etiqueta', (tester) async {
+  testWidgets('las 5 pestañas tienen su etiqueta y caben a 360 px de ancho', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(app());
-    for (final label in ['Inicio', 'Movimientos', 'Suscripciones', 'Resumen']) {
+    await tester.pumpAndSettle();
+    for (final label in ['Inicio', 'Movimientos', 'Suscripciones', 'Amigos', 'Resumen']) {
       expect(find.text(label), findsOneWidget);
     }
+    expect(AppTab.values.length, 5);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('"+" despliega Gasto, Ingreso y Suscripción; un segundo toque las cierra', (tester) async {

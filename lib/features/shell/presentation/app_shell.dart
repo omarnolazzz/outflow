@@ -24,7 +24,7 @@ class ShellScope extends InheritedWidget {
   bool updateShouldNotify(ShellScope old) => false;
 }
 
-/// Estructura principal: 4 pestañas, cada una con su propio Navigator (conserva
+/// Estructura principal: 5 pestañas, cada una con su propio Navigator (conserva
 /// su pila y su scroll), barra de cristal flotante y botón "+".
 class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.pages, required this.onQuickAdd});

@@ -7,11 +7,12 @@ import '../../../core/motion/motion_widgets.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/glass.dart';
 
-/// Pestañas de la app (Amigos llegará en la fase 4).
+/// Pestañas de la app.
 enum AppTab {
   home('Inicio', LucideIcons.house),
   movements('Movimientos', LucideIcons.arrowLeftRight),
   subscriptions('Suscripciones', LucideIcons.calendarSync),
+  friends('Amigos', LucideIcons.users),
   summary('Resumen', LucideIcons.chartPie);
 
   const AppTab(this.label, this.icon);
@@ -121,7 +122,7 @@ class _TabItem extends StatelessWidget {
                 color: color,
                 letterSpacing: -0.1,
               ),
-              child: Text(tab.label, maxLines: 1, overflow: TextOverflow.fade, softWrap: false),
+              child: FittedBox(fit: BoxFit.scaleDown, child: Text(tab.label, maxLines: 1, softWrap: false)),
             ),
           ],
         ),

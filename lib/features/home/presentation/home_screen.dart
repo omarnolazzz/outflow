@@ -13,6 +13,8 @@ import '../../../core/widgets/status_pill.dart';
 import '../../../core/widgets/surface_card.dart';
 import '../../account/presentation/account_avatar.dart';
 import '../../account/presentation/session_controller.dart';
+import '../../friends/presentation/debts_card.dart';
+import '../../friends/presentation/friends_providers.dart';
 import '../../merchants/presentation/merchant_providers.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../../shell/presentation/app_shell.dart';
@@ -123,6 +125,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         summary: month,
                         onAddIncome: () => shell?.quickAdd(QuickAction.income),
                       ),
+                    ),
+                  ),
+                // Solo ocupa sitio si hay saldos con amigos.
+                if (ref.watch(balancesProvider).isNotEmpty)
+                  e(
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: DebtsCard(),
                     ),
                   ),
                 if (upcoming.isNotEmpty) ...[

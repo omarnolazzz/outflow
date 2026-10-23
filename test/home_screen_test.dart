@@ -6,6 +6,8 @@ import 'package:outflow/core/domain/billing_cycle.dart';
 import 'package:outflow/core/domain/money.dart';
 import 'package:outflow/features/account/domain/account.dart';
 import 'package:outflow/features/account/presentation/session_controller.dart';
+import 'package:outflow/features/friends/domain/shared_expense.dart';
+import 'package:outflow/features/friends/presentation/friends_providers.dart';
 import 'package:outflow/features/home/presentation/home_screen.dart';
 import 'package:outflow/features/merchants/domain/entities/merchant.dart';
 import 'package:outflow/features/merchants/presentation/merchant_providers.dart';
@@ -59,10 +61,12 @@ void main() {
     WidgetTester tester, {
     List<Movement> movements = const [],
     List<Subscription> subs = const [],
+    MemorySocial? social,
   }) async {
     final actions = RecordingActions(_NoRepo());
     walletSettings = MemorySettings(WalletSettings(walletStartedAt: DateTime(2026, 10, 1)));
     final container = ProviderContainer(overrides: [
+      if (social != null) socialRepositoryProvider.overrideWithValue(social),
       subscriptionActionsProvider.overrideWithValue(actions),
       walletActionsProvider.overrideWithValue(WalletActions(MemoryMovements(movements), walletSettings)),
       nowProvider.overrideWithValue(now),
@@ -116,5 +120,37 @@ void main() {
     await pump(tester, subs: [netflix()]);
     expect(find.text('Próximo cobro'), findsOneWidget);
     expect(find.text('Netflix'), findsWidgets);
+  });
+
+  SharedExpense dinner({bool settled = false}) => SharedExpense(
+        id: 'e1',
+        createdBy: 'u',
+        paidBy: 'u',
+        participants: const ['u', 'ana'],
+        people: const {
+          'u': Person(uid: 'u', name: 'Gabriel Nolazco', email: 'g@example.com'),
+          'ana': Person(uid: 'ana', name: 'Ana Pérez', email: 'ana@x.com'),
+        },
+        title: 'Cena',
+        date: DateTime(2026, 10, 19),
+        currency: 'PEN',
+        totalMinor: 6666,
+        categoryId: 'food',
+        mode: SplitMode.equal,
+        shares: const {'u': 3333, 'ana': 3333},
+        updatedAt: DateTime(2026, 10, 19),
+        settled: settled ? {'ana': Settlement(by: 'u', at: DateTime(2026, 10, 20))} : const {},
+      );
+
+  testWidgets('Inicio muestra "Te deben" cuando hay saldo con amigos', (tester) async {
+    await pump(tester, social: MemorySocial(expenses: [dinner()]));
+    expect(find.textContaining('Te deben'), findsOneWidget);
+    expect(find.textContaining('33.33'), findsWidgets);
+  });
+
+  testWidgets('Inicio no muestra la tarjeta de deudas sin saldo', (tester) async {
+    await pump(tester, social: MemorySocial(expenses: [dinner(settled: true)]));
+    expect(find.textContaining('Te deben'), findsNothing);
+    expect(find.textContaining('Debes'), findsNothing);
   });
 }
