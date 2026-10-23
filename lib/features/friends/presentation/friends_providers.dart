@@ -37,10 +37,26 @@ final outgoingRequestsProvider =
 final sharedExpensesProvider =
     StreamProvider<ExpensesSnapshot>((ref) => ref.watch(socialRepositoryProvider).watchExpenses());
 
-/// Saldo con cada amigo (deudas no saldadas).
+/// Gastos que cuentan para la wallet y los saldos: los que creaste tú o un
+/// amigo aceptado. Quien solo conoce tu uid no puede meterte deudas ni gastos.
+/// Null mientras cargan los gastos o los amigos (sin amigos aún no se sabe
+/// qué gastos valen, y una lista vacía borraría tus movimientos `split`).
+final trustedExpensesProvider = Provider<ExpensesSnapshot?>((ref) {
+  final uid = ref.watch(currentAccountProvider.select((a) => a?.uid));
+  final snapshot = ref.watch(sharedExpensesProvider).value;
+  final friends = ref.watch(friendsProvider).value;
+  if (uid == null || snapshot == null || friends == null) return null;
+  final trusted = {uid, for (final f in friends) f.uid};
+  return ExpensesSnapshot(
+    [for (final e in snapshot.expenses) if (trusted.contains(e.createdBy)) e],
+    fromCache: snapshot.fromCache,
+  );
+});
+
+/// Saldo con cada persona (deudas no saldadas de los gastos de confianza).
 final balancesProvider = Provider<List<Balance>>((ref) {
   final uid = ref.watch(currentAccountProvider.select((a) => a?.uid));
-  final expenses = ref.watch(sharedExpensesProvider).value?.expenses;
+  final expenses = ref.watch(trustedExpensesProvider)?.expenses;
   if (uid == null || expenses == null) return const [];
   return computeBalances(expenses, uid);
 });
@@ -49,7 +65,7 @@ final balancesProvider = Provider<List<Balance>>((ref) {
 /// [chargeMovementSyncProvider]: conciliación idempotente, sin cuenta no hace nada.
 final splitMovementSyncProvider = Provider<void>((ref) {
   final account = ref.watch(currentAccountProvider);
-  final snapshot = ref.watch(sharedExpensesProvider).value;
+  final snapshot = ref.watch(trustedExpensesProvider);
   final movements = ref.watch(movementsProvider).value;
   final categories = ref.watch(categoriesProvider).value;
   if (account == null ||
