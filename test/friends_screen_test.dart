@@ -7,6 +7,7 @@ import 'package:outflow/features/friends/data/social_repository.dart';
 import 'package:outflow/features/friends/domain/shared_expense.dart';
 import 'package:outflow/features/friends/presentation/friends_providers.dart';
 import 'package:outflow/features/friends/presentation/friends_screen.dart';
+import 'package:outflow/features/friends/presentation/split_editor_screen.dart';
 import 'package:outflow/features/wallet/presentation/wallet_providers.dart';
 
 import 'support/fakes.dart';
@@ -82,7 +83,7 @@ void main() {
     await pump(tester, social);
     await tester.tap(find.byTooltip('Opciones'));
     await tester.pumpAndSettle();
-    expect(find.text('Dividir un gasto'), findsNothing);
+    expect(find.text('Dividir un gasto'), findsOneWidget);
     await tester.tap(find.text('Añadir amigo'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'nadie@x.com');
@@ -125,6 +126,42 @@ void main() {
     expect(find.text('Borrar'), findsNothing);
   });
 
+  testWidgets('un gasto ya pagado de otro no abre una hoja vacía', (tester) async {
+    final paid = dinner(createdBy: 'ana', paidBy: 'ana').copyWith(
+      settled: {'u': Settlement(by: 'u', at: DateTime(2026, 10, 20))},
+    );
+    await pump(tester, MemorySocial(friends: [ana], expenses: [paid]));
+    await tester.tap(find.text('Ana Pérez').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cena'));
+    await tester.pumpAndSettle();
+    expect(find.text('Marcar como pagado'), findsNothing);
+    expect(find.text('Editar'), findsNothing);
+    expect(find.text('Borrar'), findsNothing);
+    expect(find.byType(BottomSheet), findsNothing);
+  });
+
+  testWidgets('"Dividir un gasto" del menú + abre el editor', (tester) async {
+    await pump(tester, MemorySocial(friends: [ana]));
+    await tester.tap(find.byTooltip('Opciones'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Dividir un gasto'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SplitEditorScreen), findsOneWidget);
+  });
+
+  testWidgets('el creador ve Editar y abre el editor con el gasto', (tester) async {
+    await pump(tester, MemorySocial(friends: [ana], expenses: [dinner()]));
+    await tester.tap(find.text('Ana Pérez').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cena'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Editar'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SplitEditorScreen), findsOneWidget);
+    expect(find.text('Borrar gasto compartido'), findsOneWidget);
+  });
+
   testWidgets('en un gasto propio hay Borrar y marcar como pagado funciona', (tester) async {
     final social = MemorySocial(friends: [ana], expenses: [dinner()]);
     await pump(tester, social);
@@ -133,7 +170,7 @@ void main() {
     await tester.tap(find.text('Cena'));
     await tester.pumpAndSettle();
     expect(find.text('Borrar'), findsOneWidget);
-    expect(find.text('Editar'), findsNothing);
+    expect(find.text('Editar'), findsOneWidget);
     await tester.tap(find.text('Marcar como pagado'));
     await tester.pumpAndSettle();
     expect(social.expenses.single.isSettled('ana'), isTrue);

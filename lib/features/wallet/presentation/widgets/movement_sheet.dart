@@ -19,6 +19,8 @@ import '../../../../core/widgets/primary_button.dart';
 import '../../../../core/widgets/segmented_control.dart';
 import '../../../../core/widgets/sheet_scaffold.dart';
 import '../../../../core/widgets/surface_card.dart';
+import '../../../friends/presentation/friends_providers.dart';
+import '../../../friends/presentation/split_editor_screen.dart';
 import '../../../receipts/presentation/scan_receipt_flow.dart';
 import '../../domain/apple_pay_link.dart';
 import '../../domain/category.dart';
@@ -59,6 +61,9 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
   String? _categoryId;
   DateTime? _date;
   bool _saving = false;
+
+  /// "Dividir con amigos": al guardar abre el editor de reparto en vez de guardar el gasto.
+  bool _split = false;
 
   /// La categoría del comercio del borrador ya se propuso (una vez, al cargar).
   bool _suggested = false;
@@ -118,9 +123,27 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
     if (picked != null) setState(() => _date = picked);
   }
 
+  /// El interruptor solo existe en un gasto nuevo y con Amigos disponible.
+  bool get _canSplit =>
+      _e == null && _kind == MovementKind.expense && ref.read(socialRepositoryProvider).available;
+
   Future<void> _save(String currency, String categoryId, DateTime date) async {
-    setState(() => _saving = true);
     final now = ref.read(nowProvider);
+    if (_split && _canSplit) {
+      // En vez de guardar el gasto, se reparte: el editor lo guardará compartido.
+      final draft = SplitDraft(
+        totalMinor: _amount.minor,
+        currency: widget.draft?.currency ?? currency,
+        title: _title.text.trim(),
+        date: DateUtils.isSameDay(date, now) ? now : date,
+        categoryId: categoryId,
+      );
+      final root = Navigator.of(context, rootNavigator: true).context;
+      Navigator.of(context).pop();
+      showSplitEditor(root, draft: draft);
+      return;
+    }
+    setState(() => _saving = true);
     // Conserva la hora si se registra hoy (ordena bien los de un mismo día).
     final when = DateUtils.isSameDay(date, now) && _e == null ? now : date;
     final money = Money(_amount.minor, _e?.amount.currency ?? widget.draft?.currency ?? currency);
@@ -325,6 +348,28 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
               ),
             ),
           ),
+          if (_e == null && isExpense && ref.watch(socialRepositoryProvider).available) ...[
+            const SizedBox(height: 8),
+            Entrance(
+              index: 5,
+              child: SurfaceCard(
+                radius: 18,
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                child: Row(
+                  children: [
+                    const Icon(LucideIcons.users, size: 20, color: AppColors.inkSecondary),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text('Dividir con amigos', style: AppType.body)),
+                    Switch(
+                      value: _split,
+                      activeTrackColor: AppColors.accent,
+                      onChanged: (v) => setState(() => _split = v),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

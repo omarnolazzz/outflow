@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:outflow/features/friends/data/social_repository.dart';
+import 'package:outflow/features/friends/presentation/friends_providers.dart';
 import 'package:outflow/core/di/core_providers.dart';
 import 'package:outflow/features/settings/presentation/apple_pay_guide_screen.dart';
 import 'package:outflow/features/wallet/domain/default_categories.dart';
@@ -18,6 +20,7 @@ void main() {
       overrides: [
         nowProvider.overrideWithValue(DateTime(2026, 10, 22, 13)),
         movementRepositoryProvider.overrideWithValue(MemoryMovements()),
+        socialRepositoryProvider.overrideWithValue(const UnavailableSocialRepository()),
         walletSettingsRepositoryProvider.overrideWithValue(MemorySettings()),
         categoriesProvider.overrideWith((ref) => Stream.value(defaultCategories())),
       ],

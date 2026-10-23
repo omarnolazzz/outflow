@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:outflow/features/friends/data/social_repository.dart';
+import 'package:outflow/features/friends/presentation/friends_providers.dart';
 import 'package:outflow/core/di/core_providers.dart';
 import 'package:outflow/core/domain/money.dart';
 import 'package:outflow/features/wallet/domain/apple_pay_link.dart';
@@ -32,6 +34,7 @@ void main() {
     final container = ProviderContainer(overrides: [
       nowProvider.overrideWithValue(now),
       movementRepositoryProvider.overrideWithValue(movements),
+      socialRepositoryProvider.overrideWithValue(const UnavailableSocialRepository()),
       walletSettingsRepositoryProvider.overrideWithValue(MemorySettings(const WalletSettings())),
       categoriesProvider.overrideWith((ref) => Stream.value(defaultCategories())),
     ]);

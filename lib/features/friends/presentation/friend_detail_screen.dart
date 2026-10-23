@@ -13,6 +13,7 @@ import '../../account/presentation/session_controller.dart';
 import '../domain/shared_expense.dart';
 import 'friends_format.dart';
 import 'friends_providers.dart';
+import 'split_editor_screen.dart';
 
 /// Saldo y gastos compartidos con un amigo; desde aquí se salda.
 class FriendDetailScreen extends ConsumerStatefulWidget {
@@ -57,6 +58,9 @@ class _FriendDetailScreenState extends ConsumerState<FriendDetailScreen> {
   Future<void> _openExpense(SharedExpense e, String me) async {
     final debtor = _debtor(e, me);
     final canDelete = e.createdBy == me;
+    final canSettle = debtor != null && !e.isSettled(debtor);
+    // Ya pagado y de otro: no hay nada que hacer, no se abre una hoja vacía.
+    if (!canSettle && !canDelete) return;
     final action = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: AppColors.surface,
@@ -64,8 +68,10 @@ class _FriendDetailScreenState extends ConsumerState<FriendDetailScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (debtor != null && !e.isSettled(debtor))
+            if (canSettle)
               ListTile(title: const Text('Marcar como pagado'), onTap: () => Navigator.pop(ctx, 'settle')),
+            if (canDelete)
+              ListTile(title: const Text('Editar'), onTap: () => Navigator.pop(ctx, 'edit')),
             if (canDelete)
               ListTile(
                 title: const Text('Borrar', style: TextStyle(color: AppColors.danger)),
@@ -79,6 +85,8 @@ class _FriendDetailScreenState extends ConsumerState<FriendDetailScreen> {
     final repo = ref.read(socialRepositoryProvider);
     if (action == 'settle' && debtor != null) {
       fireWrite(context, repo.settle(e.id, debtor));
+    } else if (action == 'edit') {
+      await showSplitEditor(context, editing: e);
     } else if (action == 'delete') {
       final ok = await showDialog<bool>(
         context: context,

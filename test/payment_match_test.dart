@@ -43,4 +43,9 @@ void main() {
     final near = mv('near', 'Bodega San Martín', 4590, when.subtract(const Duration(minutes: 10)));
     expect(match([sub, far, near]), ['near', 'far']);
   });
+
+  test('tu parte de un gasto compartido nunca coincide', () {
+    final share = mv('sp', 'Bodega San Martín', 4590, when, origin: MovementOrigin.split);
+    expect(match([share]), isEmpty);
+  });
 }

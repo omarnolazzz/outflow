@@ -4,6 +4,11 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:outflow/core/di/core_providers.dart';
 import 'package:outflow/core/domain/money.dart';
+import 'package:outflow/features/account/domain/account.dart';
+import 'package:outflow/features/account/presentation/session_controller.dart';
+import 'package:outflow/features/friends/data/social_repository.dart';
+import 'package:outflow/features/friends/presentation/friends_providers.dart';
+import 'package:outflow/features/friends/presentation/split_editor_screen.dart';
 import 'package:outflow/features/receipts/data/gemini_receipt_reader.dart';
 import 'package:outflow/features/receipts/data/text_recognizer.dart';
 import 'package:outflow/features/receipts/domain/receipt.dart';
@@ -39,6 +44,7 @@ void main() {
     Future<String?> Function(bool)? picker,
     TextRecognizer? recognizer,
     ReceiptReader? reader,
+    SocialRepository? social,
   }) async {
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3;
@@ -53,6 +59,10 @@ void main() {
         imagePickerProvider.overrideWithValue(picker ?? (_) async => null),
         if (recognizer != null) textRecognizerProvider.overrideWithValue(recognizer),
         if (reader != null) receiptReaderProvider.overrideWithValue(reader),
+        socialRepositoryProvider.overrideWithValue(social ?? const UnavailableSocialRepository()),
+        currentAccountProvider.overrideWithValue(
+          const Account(uid: 'u', email: 'g@example.com', displayName: 'Gabriel Nolazco'),
+        ),
       ],
       child: MaterialApp(home: home ?? ReceiptResultScreen(receipt: receipt)),
     ));
@@ -118,6 +128,25 @@ void main() {
     expect(movements.saved, hasLength(2));
   });
 
+  testWidgets('con Amigos disponible, Dividir con amigos abre el editor con los productos', (tester) async {
+    final movements = await pump(tester, social: MemorySocial());
+    expect(find.text('Disponible con Amigos'), findsNothing);
+    await tester.tap(find.text('Dividir con amigos'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SplitEditorScreen), findsOneWidget);
+    expect(find.text('Productos'), findsOneWidget);
+    expect(find.text('S/ 45.90'), findsOneWidget);
+    expect(movements.saved, isEmpty);
+  });
+
+  testWidgets('sin Amigos, Dividir con amigos sigue desactivado', (tester) async {
+    await pump(tester, social: MemorySocial(available: false));
+    expect(find.text('Disponible con Amigos'), findsOneWidget);
+    await tester.tap(find.text('Dividir con amigos'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SplitEditorScreen), findsNothing);
+  });
+
   testWidgets('cancelar la cámara vuelve sin error ni pantallas nuevas', (tester) async {
     await pump(
       tester,
@@ -162,6 +191,7 @@ void reviewFixes() {
         movementRepositoryProvider.overrideWithValue(MemoryMovements()),
         walletSettingsRepositoryProvider.overrideWithValue(MemorySettings(const WalletSettings())),
         categoriesProvider.overrideWith((ref) => Stream.value(defaultCategories())),
+        socialRepositoryProvider.overrideWithValue(const UnavailableSocialRepository()),
         ...overrides,
       ],
       child: MaterialApp(home: home),

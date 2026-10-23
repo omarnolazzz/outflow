@@ -17,6 +17,8 @@ List<Movement> findMatchingPayments({
     for (final x in movements)
       if (x.isExpense &&
           x.origin != MovementOrigin.subscription &&
+          // Tu parte de un gasto compartido nunca es el pago que se está dividiendo.
+          x.origin != MovementOrigin.split &&
           x.date.difference(date).abs() <= window &&
           ((x.amount.minor - amountMinor).abs() <= tolerance ||
               (m.isNotEmpty && normalizeMerchant(x.title) == m)))

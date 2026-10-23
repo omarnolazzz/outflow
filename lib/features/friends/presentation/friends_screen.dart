@@ -18,6 +18,7 @@ import 'add_friend_sheet.dart';
 import 'friend_detail_screen.dart';
 import 'friends_format.dart';
 import 'friends_providers.dart';
+import 'split_editor_screen.dart';
 
 /// Pestaña Amigos: saldos, solicitudes, amigos y gastos compartidos.
 class FriendsScreen extends ConsumerWidget {
@@ -124,8 +125,7 @@ class FriendsScreen extends ConsumerWidget {
   }
 }
 
-/// Botón "+" de la cabecera. Por ahora solo ofrece "Añadir amigo"; la tarea
-/// del editor de reparto añadirá "Dividir un gasto".
+/// Botón "+" de la cabecera: añadir un amigo o dividir un gasto.
 class _AddMenu extends StatelessWidget {
   const _AddMenu();
 
@@ -133,14 +133,22 @@ class _AddMenu extends StatelessWidget {
   Widget build(BuildContext context) => PopupMenuButton<String>(
         tooltip: 'Opciones',
         color: AppColors.surface,
-        onSelected: (_) => showAddFriendSheet(context),
+        onSelected: (v) => v == 'split' ? showSplitEditor(context) : showAddFriendSheet(context),
         itemBuilder: (_) => [
           PopupMenuItem<String>(
             value: 'add',
             child: Row(children: [
               const Icon(LucideIcons.userPlus, size: 18, color: AppColors.ink),
               const SizedBox(width: 10),
-              Text('Añadir amigo', style: AppType.body),
+              Flexible(child: Text('Añadir amigo', maxLines: 1, overflow: TextOverflow.ellipsis, style: AppType.body)),
+            ]),
+          ),
+          PopupMenuItem<String>(
+            value: 'split',
+            child: Row(children: [
+              const Icon(LucideIcons.split, size: 18, color: AppColors.ink),
+              const SizedBox(width: 10),
+              Flexible(child: Text('Dividir un gasto', maxLines: 1, overflow: TextOverflow.ellipsis, style: AppType.body)),
             ]),
           ),
         ],

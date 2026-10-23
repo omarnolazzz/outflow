@@ -25,6 +25,9 @@ import '../../wallet/domain/movement.dart';
 import '../../wallet/domain/payment_match.dart';
 import '../../wallet/presentation/wallet_providers.dart';
 import '../../wallet/presentation/widgets/category_icon.dart';
+import '../../friends/presentation/friends_providers.dart';
+import '../../friends/presentation/split_editor_screen.dart';
+import '../../wallet/presentation/widgets/match_payment_sheet.dart';
 import '../domain/receipt.dart';
 
 /// Resultado de leer un ticket: todo editable antes de guardar. Si el pago
@@ -124,55 +127,21 @@ class _ReceiptResultScreenState extends ConsumerState<ReceiptResultScreen> {
     if (picked != null) setState(() => _categoryId = picked);
   }
 
-  /// "¿Es este pago?": el gasto elegido, null si es otro, o cancelado.
-  Future<(bool, Movement?)> _askMatch(List<Movement> candidates) async {
-    final picked = await showModalBottomSheet<Object>(
-      context: context,
-      useRootNavigator: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('¿Es este pago?', style: AppType.title2),
-              const SizedBox(height: 4),
-              Text('Ya registraste un gasto parecido. Si es el mismo, lo completamos con el ticket.', style: AppType.subhead),
-              const SizedBox(height: 14),
-              for (final m in candidates.take(3))
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: SurfaceCard(
-                    onTap: () => Navigator.pop(context, m),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(m.title.isEmpty ? 'Gasto' : m.title, style: AppType.headline),
-                              Text(
-                                '${Fmt.dateShort(m.date)}${m.origin == MovementOrigin.applePay ? ' · Apple Pay' : ''}',
-                                style: AppType.footnote,
-                              ),
-                            ],
-                          ),
-                        ),
-                        Text(Fmt.money(m.amount), style: AppType.amount),
-                      ],
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 4),
-              PrimaryButton(label: 'No, es otro', secondary: true, onTap: () => Navigator.pop(context, false)),
-            ],
-          ),
-        ),
-      ),
+  /// Cierra el ticket y abre el editor de reparto con los productos leídos.
+  void _split(String currency, String categoryId) {
+    final now = ref.read(nowProvider);
+    final date = _date ?? now;
+    final draft = SplitDraft(
+      totalMinor: _total.minor,
+      currency: currency,
+      title: _merchant.text.trim(),
+      date: DateUtils.isSameDay(date, now) ? now : date,
+      categoryId: categoryId,
+      items: _items,
     );
-    if (picked == null) return (false, null);
-    return (true, picked is Movement ? picked : null);
+    final root = Navigator.of(context, rootNavigator: true).context;
+    Navigator.of(context).pop();
+    showSplitEditor(root, draft: draft);
   }
 
   Future<void> _save(String categoryId) async {
@@ -190,7 +159,7 @@ class _ReceiptResultScreenState extends ConsumerState<ReceiptResultScreen> {
 
     Movement? existing;
     if (candidates.isNotEmpty) {
-      final (decided, chosen) = await _askMatch(candidates);
+      final (decided, chosen) = await askMatchingPayment(context, candidates);
       if (!decided) return;
       existing = chosen;
     }
@@ -265,17 +234,26 @@ class _ReceiptResultScreenState extends ConsumerState<ReceiptResultScreen> {
             onTap: _total.minor > 0 && _categoryId != null ? () => _save(_categoryId!) : null,
           ),
           const SizedBox(height: 8),
-          Opacity(
-            opacity: 0.5,
-            child: PrimaryButton(
+          if (ref.watch(socialRepositoryProvider).available)
+            PrimaryButton(
               label: 'Dividir con amigos',
               secondary: true,
               icon: const Icon(LucideIcons.users, size: 18, color: AppColors.ink),
-              onTap: null,
+              onTap: _total.minor > 0 && _categoryId != null ? () => _split(currency, _categoryId!) : null,
+            )
+          else ...[
+            Opacity(
+              opacity: 0.5,
+              child: PrimaryButton(
+                label: 'Dividir con amigos',
+                secondary: true,
+                icon: const Icon(LucideIcons.users, size: 18, color: AppColors.ink),
+                onTap: null,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text('Disponible con Amigos', style: AppType.caption),
+            const SizedBox(height: 4),
+            Text('Disponible con Amigos', style: AppType.caption),
+          ],
         ],
       ),
       child: ListView(
