@@ -19,8 +19,9 @@ final splitMovementSyncProvider = Provider<void>((ref) {
   if (account == null ||
       snapshot == null ||
       movements == null ||
-      categories == null)
+      categories == null) {
     return;
+  }
 
   final changes = reconcileSplitMovements(
     snapshot: snapshot,

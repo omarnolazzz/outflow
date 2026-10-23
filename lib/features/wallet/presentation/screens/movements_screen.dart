@@ -209,6 +209,8 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                           color: AppColors.dangerSoft,
                           child: const Icon(LucideIcons.trash2, color: AppColors.danger),
                         ),
+                        // Tu parte de un gasto compartido se gestiona desde Amigos.
+                        confirmDismiss: (_) async => m.origin != MovementOrigin.split,
                         onDismissed: (_) => _delete(m),
                         child: MovementRow(
                           movement: m,

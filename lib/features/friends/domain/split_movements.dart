@@ -73,8 +73,9 @@ SplitMovementChanges reconcileSplitMovements({
       createdAt: current?.createdAt ?? e.date,
     );
     if (current == null ||
-        current.toJson().toString() != desired.toJson().toString())
+        current.toJson().toString() != desired.toJson().toString()) {
       upsert.add(desired);
+    }
   }
 
   final delete = snapshot.fromCache
