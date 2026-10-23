@@ -163,7 +163,8 @@ class _SplitEditorScreenState extends ConsumerState<SplitEditorScreen> {
       p.uid == myUid ? 'Tú' : (p.name.trim().isEmpty ? p.email : p.firstName);
 
   void _toggleWith(String uid, String myUid) {
-    if (uid == _paidBy) return; // quien pagó siempre participa
+    // Quien pagó y tú (el creador) siempre participan: las reglas lo exigen.
+    if (uid == _paidBy || uid == myUid) return;
     setState(() {
       if (!_with.remove(uid)) _with.add(uid);
     });
@@ -392,6 +393,7 @@ class _SplitEditorScreenState extends ConsumerState<SplitEditorScreen> {
     final shares = computed.shares;
     final canSave = _amount.minor > 0 &&
         participants.length >= 2 &&
+        participants.contains(me.uid) &&
         categoryId != null &&
         shares != null &&
         computed.error == null &&

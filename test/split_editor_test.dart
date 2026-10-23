@@ -273,6 +273,20 @@ void main() {
     expect(social.expenses.single.participants, containsAll(['u', 'ana']));
   });
 
+  testWidgets('tú siempre participas aunque pague otra persona', (tester) async {
+    const bea = Person(uid: 'bea', name: 'Bea Ruiz', email: 'bea@x.com');
+    final social = MemorySocial(friends: [ana, bea]);
+    await pump(tester, social, draft: draft);
+    await tapKey(tester, 'paid-ana');
+    await tapKey(tester, 'with-u'); // intenta quitarte: se ignora
+    await tapKey(tester, 'with-bea');
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
+    final e = social.expenses.single;
+    expect(e.paidBy, 'ana');
+    expect(e.participants, containsAll(['u', 'ana', 'bea']));
+  });
+
   group('edición', () {
     SharedExpense dinner() => SharedExpense(
           id: 'e1',
