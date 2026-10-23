@@ -127,8 +127,9 @@ class _ReceiptResultScreenState extends ConsumerState<ReceiptResultScreen> {
     if (picked != null) setState(() => _categoryId = picked);
   }
 
-  /// Cierra el ticket y abre el editor de reparto con los productos leídos.
-  void _split(String currency, String categoryId) {
+  /// Abre encima el editor de reparto con los productos leídos; el ticket se
+  /// cierra solo si el reparto se guarda (cancelar vuelve aquí intacto).
+  Future<void> _split(String currency, String categoryId) async {
     final now = ref.read(nowProvider);
     final date = _date ?? now;
     final draft = SplitDraft(
@@ -139,9 +140,8 @@ class _ReceiptResultScreenState extends ConsumerState<ReceiptResultScreen> {
       categoryId: categoryId,
       items: _items,
     );
-    final root = Navigator.of(context, rootNavigator: true).context;
-    Navigator.of(context).pop();
-    showSplitEditor(root, draft: draft);
+    final saved = await showSplitEditor(context, draft: draft);
+    if (saved && mounted) Navigator.of(context).pop();
   }
 
   Future<void> _save(String categoryId) async {

@@ -138,9 +138,10 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
         date: DateUtils.isSameDay(date, now) ? now : date,
         categoryId: categoryId,
       );
-      final root = Navigator.of(context, rootNavigator: true).context;
-      Navigator.of(context).pop();
-      showSplitEditor(root, draft: draft);
+      // El editor se abre encima: si se cierra sin guardar, la hoja sigue
+      // aquí con el pago intacto; solo se cierra cuando el reparto se guarda.
+      final saved = await showSplitEditor(context, draft: draft);
+      if (saved && mounted) Navigator.of(context).pop();
       return;
     }
     setState(() => _saving = true);

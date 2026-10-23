@@ -55,12 +55,15 @@ class SplitDraft {
 }
 
 /// Abre el editor para dividir un gasto nuevo (con [draft] o en blanco) o
-/// para editar uno existente ([editing], solo su creador).
-Future<void> showSplitEditor(BuildContext context, {SplitDraft? draft, SharedExpense? editing}) =>
-    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(
-      fullscreenDialog: true,
-      builder: (_) => SplitEditorScreen(draft: draft, editing: editing),
-    ));
+/// para editar uno existente ([editing], solo su creador). Devuelve true si
+/// se guardó; false si se cerró sin guardar (o se borró el gasto).
+Future<bool> showSplitEditor(BuildContext context, {SplitDraft? draft, SharedExpense? editing}) async {
+  final saved = await Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<bool>(
+    fullscreenDialog: true,
+    builder: (_) => SplitEditorScreen(draft: draft, editing: editing),
+  ));
+  return saved ?? false;
+}
 
 class SplitEditorScreen extends ConsumerStatefulWidget {
   const SplitEditorScreen({super.key, this.draft, this.editing});
@@ -359,7 +362,7 @@ class _SplitEditorScreenState extends ConsumerState<SplitEditorScreen> {
     if (matched != null) await ref.read(walletActionsProvider).delete(matched.id);
     HapticFeedback.mediumImpact();
     if (!mounted) return;
-    Navigator.of(context).pop();
+    Navigator.of(context).pop(true);
   }
 
   Future<void> _delete() async {

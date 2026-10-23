@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:outflow/core/di/core_providers.dart';
 import 'package:outflow/core/domain/money.dart';
 import 'package:outflow/core/widgets/primary_button.dart';
@@ -13,6 +14,7 @@ import 'package:outflow/features/friends/domain/shared_expense.dart';
 import 'package:outflow/features/friends/presentation/friends_providers.dart';
 import 'package:outflow/features/friends/presentation/split_editor_screen.dart';
 import 'package:outflow/features/receipts/domain/receipt.dart';
+import 'package:outflow/features/wallet/domain/apple_pay_link.dart';
 import 'package:outflow/features/wallet/domain/default_categories.dart';
 import 'package:outflow/features/wallet/domain/movement.dart';
 import 'package:outflow/features/wallet/domain/wallet_settings.dart';
@@ -399,6 +401,63 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(SplitEditorScreen), findsOneWidget);
       expect(find.text('S/ 5'), findsOneWidget);
+      expect(movements.saved, isEmpty);
+    });
+
+    Future<MemoryMovements> pumpGooglePay(WidgetTester tester, MemorySocial social) => pump(
+          tester,
+          social,
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showMovementSheet(
+                context,
+                draft: MovementDraft(
+                  amountMinor: 4250,
+                  currency: 'PEN',
+                  title: 'Tambo',
+                  date: now,
+                  origin: MovementOrigin.googlePay,
+                ),
+              ),
+              child: const Text('hoja'),
+            ),
+          ),
+        );
+
+    Future<void> splitFromSheet(WidgetTester tester) async {
+      await tester.tap(find.text('hoja'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SplitEditorScreen), findsOneWidget);
+    }
+
+    testWidgets('cerrar el editor vuelve a la hoja con el pago intacto y sin guardar nada', (tester) async {
+      final social = MemorySocial(friends: [ana]);
+      final movements = await pumpGooglePay(tester, social);
+      await splitFromSheet(tester);
+      await tester.tap(find.descendant(of: find.byType(SplitEditorScreen), matching: find.byIcon(LucideIcons.x)));
+      await tester.pumpAndSettle();
+      expect(find.byType(SplitEditorScreen), findsNothing);
+      expect(find.byType(MovementSheet), findsOneWidget);
+      expect(find.text('S/ 42.50'), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'Tambo'), findsOneWidget);
+      expect(movements.saved, isEmpty);
+      expect(social.expenses, isEmpty);
+    });
+
+    testWidgets('guardar el reparto cierra el editor y la hoja', (tester) async {
+      final social = MemorySocial(friends: [ana]);
+      final movements = await pumpGooglePay(tester, social);
+      await splitFromSheet(tester);
+      await tapKey(tester, 'with-ana');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SplitEditorScreen), findsNothing);
+      expect(find.byType(MovementSheet), findsNothing);
+      expect(social.expenses.single.totalMinor, 4250);
       expect(movements.saved, isEmpty);
     });
 

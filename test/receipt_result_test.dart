@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:outflow/core/di/core_providers.dart';
 import 'package:outflow/core/domain/money.dart';
 import 'package:outflow/features/account/domain/account.dart';
 import 'package:outflow/features/account/presentation/session_controller.dart';
 import 'package:outflow/features/friends/data/social_repository.dart';
+import 'package:outflow/features/friends/domain/shared_expense.dart';
 import 'package:outflow/features/friends/presentation/friends_providers.dart';
 import 'package:outflow/features/friends/presentation/split_editor_screen.dart';
 import 'package:outflow/features/receipts/data/gemini_receipt_reader.dart';
@@ -137,6 +139,56 @@ void main() {
     expect(find.text('Productos'), findsOneWidget);
     expect(find.text('S/ 45.90'), findsOneWidget);
     expect(movements.saved, isEmpty);
+  });
+
+  group('Dividir con amigos desde el ticket', () {
+    const ana = Person(uid: 'ana', name: 'Ana Pérez', email: 'ana@x.com');
+
+    Future<MemoryMovements> pumpPushed(WidgetTester tester, MemorySocial social) async {
+      final movements = await pump(
+        tester,
+        social: social,
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => ReceiptResultScreen(receipt: receipt),
+            )),
+            child: const Text('ticket'),
+          ),
+        ),
+      );
+      await tester.tap(find.text('ticket'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Dividir con amigos'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SplitEditorScreen), findsOneWidget);
+      return movements;
+    }
+
+    testWidgets('cerrar el editor vuelve al ticket intacto', (tester) async {
+      final social = MemorySocial(friends: [ana]);
+      final movements = await pumpPushed(tester, social);
+      await tester.tap(find.descendant(of: find.byType(SplitEditorScreen), matching: find.byIcon(LucideIcons.x)));
+      await tester.pumpAndSettle();
+      expect(find.byType(SplitEditorScreen), findsNothing);
+      expect(find.byType(ReceiptResultScreen), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'Bodega San Martín'), findsOneWidget);
+      expect(movements.saved, isEmpty);
+      expect(social.expenses, isEmpty);
+    });
+
+    testWidgets('guardar el reparto cierra el editor y el ticket', (tester) async {
+      final social = MemorySocial(friends: [ana]);
+      await pumpPushed(tester, social);
+      await tester.ensureVisible(find.byKey(const ValueKey('with-ana')));
+      await tester.tap(find.byKey(const ValueKey('with-ana')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SplitEditorScreen), findsNothing);
+      expect(find.byType(ReceiptResultScreen), findsNothing);
+      expect(social.expenses.single.totalMinor, 4590);
+    });
   });
 
   testWidgets('sin Amigos, Dividir con amigos sigue desactivado', (tester) async {
