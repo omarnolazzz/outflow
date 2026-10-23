@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../domain/account.dart';
@@ -37,7 +38,7 @@ class AccountAvatar extends StatelessWidget {
   }
 }
 
-/// "G" de Google para el botón de acceso (dibujada, sin recursos de marca).
+/// Logo "G" de Google a cuatro colores para el botón de acceso.
 class GoogleGlyph extends StatelessWidget {
   const GoogleGlyph({super.key, this.size = 20});
   final double size;
@@ -48,9 +49,6 @@ class GoogleGlyph extends StatelessWidget {
         height: size,
         alignment: Alignment.center,
         decoration: const BoxDecoration(color: AppColors.surface, shape: BoxShape.circle),
-        child: Text(
-          'G',
-          style: TextStyle(fontSize: size * 0.72, fontWeight: FontWeight.w700, color: const Color(0xFF4285F4)),
-        ),
+        child: SvgPicture.asset('assets/branding/google_g.svg', width: size * 0.72, height: size * 0.72),
       );
 }
