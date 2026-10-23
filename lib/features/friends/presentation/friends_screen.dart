@@ -7,6 +7,7 @@ import '../../../core/motion/motion_widgets.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/widgets/pressable.dart';
 import '../../../core/widgets/status_pill.dart';
 import '../../../core/widgets/surface_card.dart';
 import '../../account/presentation/session_controller.dart';
@@ -35,6 +36,13 @@ class FriendsScreen extends ConsumerWidget {
       ..sort((a, b) => b.date.compareTo(a.date));
     final balances = {for (final b in ref.watch(balancesProvider)) b.friendUid: b};
     final total = totalsLabel(balances.values.toList());
+    final friendUids = {for (final f in friends) f.uid};
+    final others = [
+      for (final uid in balances.keys)
+        if (!friendUids.contains(uid))
+          expenses.map((x) => x.people[uid]).whereType<Person>().firstOrNull ??
+              Person(uid: uid, name: 'Amigo', email: ''),
+    ];
 
     var order = 0;
     Widget e(Widget child) => Entrance(index: order++, child: child);
@@ -104,6 +112,16 @@ class FriendsScreen extends ConsumerWidget {
                 e(Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
                   child: _FriendRow(friend: f, balance: balances[f.uid]),
+                )),
+            ],
+            // Saldos con quien no es tu amigo (p. ej. pagó otra persona en un
+            // gasto que repartió un amigo): también se ven y se saldan.
+            if (others.isNotEmpty) ...[
+              e(const SectionHeader('Otras personas')),
+              for (final p in others)
+                e(Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  child: _FriendRow(friend: p, balance: balances[p.uid]),
                 )),
             ],
             if (expenses.isNotEmpty) ...[
@@ -265,34 +283,40 @@ class _FriendRow extends StatelessWidget {
   }
 }
 
-class _HistoryRow extends StatelessWidget {
+class _HistoryRow extends ConsumerWidget {
   const _HistoryRow({required this.expense, required this.myUid});
   final SharedExpense expense;
   final String? myUid;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final payer = expense.paidBy == myUid
         ? 'Pagaste tú'
         : 'Pagó ${expense.people[expense.paidBy]?.firstName ?? "otra persona"}';
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(expense.title.isEmpty ? 'Gasto' : expense.title,
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: AppType.body),
-                Text('$payer · ${Fmt.dateShort(expense.date)}',
-                    style: AppType.subhead.copyWith(color: AppColors.inkSecondary)),
-              ],
+    final me = myUid;
+    return Pressable(
+      // La misma hoja que en el detalle de un amigo: marcar pagos, Editar, Borrar.
+      onTap: me == null ? null : () => showExpenseActions(context, ref, expense, me),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(expense.title.isEmpty ? 'Gasto' : expense.title,
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: AppType.body),
+                  Text('$payer · ${Fmt.dateShort(expense.date)}',
+                      style: AppType.subhead.copyWith(color: AppColors.inkSecondary)),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Text(Fmt.money(Money(expense.totalMinor, expense.currency)), style: AppType.body),
-        ],
+            const SizedBox(width: 8),
+            Text(Fmt.money(Money(expense.totalMinor, expense.currency)), style: AppType.body),
+          ],
+        ),
       ),
     );
   }

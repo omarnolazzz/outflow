@@ -55,54 +55,6 @@ class _FriendDetailScreenState extends ConsumerState<FriendDetailScreen> {
     }
   }
 
-  Future<void> _openExpense(SharedExpense e, String me) async {
-    final debtor = _debtor(e, me);
-    final canDelete = e.createdBy == me;
-    final canSettle = debtor != null && !e.isSettled(debtor);
-    // Ya pagado y de otro: no hay nada que hacer, no se abre una hoja vacía.
-    if (!canSettle && !canDelete) return;
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (canSettle)
-              ListTile(title: const Text('Marcar como pagado'), onTap: () => Navigator.pop(ctx, 'settle')),
-            if (canDelete)
-              ListTile(title: const Text('Editar'), onTap: () => Navigator.pop(ctx, 'edit')),
-            if (canDelete)
-              ListTile(
-                title: const Text('Borrar', style: TextStyle(color: AppColors.danger)),
-                onTap: () => Navigator.pop(ctx, 'delete'),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (!mounted || action == null) return;
-    final repo = ref.read(socialRepositoryProvider);
-    if (action == 'settle' && debtor != null) {
-      fireWrite(context, repo.settle(e.id, debtor));
-    } else if (action == 'edit') {
-      await showSplitEditor(context, editing: e);
-    } else if (action == 'delete') {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('¿Borrar este gasto?'),
-          content: const Text('Se borra para todos los que participan.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Borrar')),
-          ],
-        ),
-      );
-      if (ok == true && mounted) fireWrite(context, repo.deleteExpense(e.id));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final me = ref.watch(currentAccountProvider.select((a) => a?.uid)) ?? '';
@@ -157,7 +109,7 @@ class _FriendDetailScreenState extends ConsumerState<FriendDetailScreen> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: SurfaceCard(
-                  onTap: () => _openExpense(e, me),
+                  onTap: () => showExpenseActions(context, ref, e, me, counterpart: widget.friendUid),
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   child: Row(
                     children: [
@@ -187,5 +139,78 @@ class _FriendDetailScreenState extends ConsumerState<FriendDetailScreen> {
         ],
       ),
     );
+  }
+}
+
+/// Deudores cuyo pago puedes marcar en [e]: tú, si le debes a quien pagó, o
+/// quienes te deben, si pagaste tú. Con [counterpart], solo la deuda entre
+/// tú y esa persona.
+List<String> settleableDebtors(SharedExpense e, String me, {String? counterpart}) {
+  if (e.paidBy == me) {
+    return [
+      for (final d in e.debtors)
+        if (!e.isSettled(d) && (counterpart == null || d == counterpart)) d,
+    ];
+  }
+  if (e.debtors.contains(me) && !e.isSettled(me) && (counterpart == null || e.paidBy == counterpart)) {
+    return [me];
+  }
+  return const [];
+}
+
+/// Hoja de acciones de un gasto compartido: marcar pagos (donde pagaste o
+/// debes) y, si lo creaste tú, Editar y Borrar. Sin acciones no se abre.
+Future<void> showExpenseActions(
+  BuildContext context,
+  WidgetRef ref,
+  SharedExpense e,
+  String me, {
+  String? counterpart,
+}) async {
+  final debtors = settleableDebtors(e, me, counterpart: counterpart);
+  final canEdit = e.createdBy == me;
+  // Ya pagado y de otro: no hay nada que hacer, no se abre una hoja vacía.
+  if (debtors.isEmpty && !canEdit) return;
+  String settleLabel(String d) =>
+      debtors.length == 1 ? 'Marcar como pagado' : 'Marcar como pagado · ${e.people[d]?.shortName ?? 'Amigo'}';
+  final action = await showModalBottomSheet<String>(
+    context: context,
+    backgroundColor: AppColors.surface,
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final d in debtors)
+            ListTile(title: Text(settleLabel(d)), onTap: () => Navigator.pop(ctx, 'settle:$d')),
+          if (canEdit) ListTile(title: const Text('Editar'), onTap: () => Navigator.pop(ctx, 'edit')),
+          if (canEdit)
+            ListTile(
+              title: const Text('Borrar', style: TextStyle(color: AppColors.danger)),
+              onTap: () => Navigator.pop(ctx, 'delete'),
+            ),
+        ],
+      ),
+    ),
+  );
+  if (!context.mounted || action == null) return;
+  final repo = ref.read(socialRepositoryProvider);
+  if (action.startsWith('settle:')) {
+    // Sin esperar: offline las escrituras no terminan; los streams se actualizan solos.
+    fireWrite(context, repo.settle(e.id, action.substring('settle:'.length)));
+  } else if (action == 'edit') {
+    await showSplitEditor(context, editing: e);
+  } else if (action == 'delete') {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Borrar este gasto?'),
+        content: const Text('Se borra para todos los que participan.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Borrar')),
+        ],
+      ),
+    );
+    if (ok == true && context.mounted) fireWrite(context, repo.deleteExpense(e.id));
   }
 }

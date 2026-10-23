@@ -162,6 +162,80 @@ void main() {
     expect(find.text('Borrar gasto compartido'), findsOneWidget);
   });
 
+  group('personas que no son tus amigos', () {
+    const carl = Person(uid: 'carl', name: 'Carlos Díaz', email: 'carl@x.com');
+
+    // Ana (amiga) reparte una cena que pagó Carlos (no es tu amigo).
+    SharedExpense carlPaid() => dinner(createdBy: 'ana', paidBy: 'carl').copyWith(
+          participants: const ['u', 'ana', 'carl'],
+          people: const {'u': me, 'ana': ana, 'carl': carl},
+          totalMinor: 9000,
+          shares: const {'u': 3000, 'ana': 3000, 'carl': 3000},
+        );
+
+    testWidgets('ves lo que le debes, abres su detalle y saldas', (tester) async {
+      final social = MemorySocial(friends: [ana], expenses: [carlPaid()]);
+      await pump(tester, social);
+      expect(find.text('Carlos Díaz'), findsOneWidget);
+      expect(find.text('Le debes S/30.00'), findsWidgets);
+      await tester.tap(find.text('Carlos Díaz'));
+      await tester.pumpAndSettle();
+      expect(find.text('Saldar todo'), findsOneWidget);
+      await tester.tap(find.text('Cena'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Marcar como pagado'));
+      await tester.pumpAndSettle();
+      expect(social.expenses.single.isSettled('u'), isTrue);
+      expect(find.text('Al día'), findsWidgets);
+    });
+
+    testWidgets('el historial abre la hoja del gasto: le pagas a quien no es tu amigo', (tester) async {
+      final social = MemorySocial(friends: [ana], expenses: [carlPaid()]);
+      await pump(tester, social);
+      await tester.tap(find.text('Cena'));
+      await tester.pumpAndSettle();
+      expect(find.text('Editar'), findsNothing);
+      await tester.tap(find.text('Marcar como pagado'));
+      await tester.pumpAndSettle();
+      expect(social.expenses.single.isSettled('u'), isTrue);
+    });
+
+    testWidgets('si pagaste tú, el historial deja marcar el pago de cada deudor', (tester) async {
+      final mine = dinner().copyWith(
+        participants: const ['u', 'ana', 'carl'],
+        people: const {'u': me, 'ana': ana, 'carl': carl},
+        totalMinor: 9000,
+        shares: const {'u': 3000, 'ana': 3000, 'carl': 3000},
+      );
+      final social = MemorySocial(friends: [ana], expenses: [mine]);
+      await pump(tester, social);
+      await tester.tap(find.text('Cena'));
+      await tester.pumpAndSettle();
+      expect(find.text('Marcar como pagado · Ana'), findsOneWidget);
+      await tester.tap(find.text('Marcar como pagado · Carlos'));
+      await tester.pumpAndSettle();
+      expect(social.expenses.single.isSettled('carl'), isTrue);
+      expect(social.expenses.single.isSettled('ana'), isFalse);
+    });
+
+    testWidgets('el creador con parte 0 que no pagó abre Editar desde el historial', (tester) async {
+      final organized = dinner(createdBy: 'u', paidBy: 'ana').copyWith(
+        participants: const ['u', 'ana', 'carl'],
+        people: const {'u': me, 'ana': ana, 'carl': carl},
+        mode: SplitMode.amounts,
+        totalMinor: 6000,
+        shares: const {'u': 0, 'ana': 3000, 'carl': 3000},
+      );
+      await pump(tester, MemorySocial(friends: [ana], expenses: [organized]));
+      await tester.tap(find.text('Cena'));
+      await tester.pumpAndSettle();
+      expect(find.text('Marcar como pagado'), findsNothing);
+      await tester.tap(find.text('Editar'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SplitEditorScreen), findsOneWidget);
+    });
+  });
+
   testWidgets('en un gasto propio hay Borrar y marcar como pagado funciona', (tester) async {
     final social = MemorySocial(friends: [ana], expenses: [dinner()]);
     await pump(tester, social);
