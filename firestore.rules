@@ -1,0 +1,35 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function signedIn() { return request.auth != null; }
+    function me() { return request.auth.uid; }
+
+    match /users/{uid} {
+      allow get: if signedIn();
+      allow list: if signedIn() && request.query.limit <= 1;
+      allow write: if signedIn() && me() == uid;
+    }
+
+    match /friendRequests/{id} {
+      allow read: if signedIn() && (resource.data.from == me() || resource.data.to == me());
+      allow create: if signedIn() && request.resource.data.from == me()
+        && id == me() + '_' + request.resource.data.to
+        && request.resource.data.status == 'pending';
+      allow update: if signedIn() && me() == resource.data.to
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && request.resource.data.status == 'accepted';
+      allow delete: if signedIn() && (resource.data.from == me() || resource.data.to == me());
+    }
+
+    match /expenses/{id} {
+      allow read: if signedIn() && me() in resource.data.participants;
+      allow create: if signedIn() && request.resource.data.createdBy == me()
+        && me() in request.resource.data.participants;
+      allow update: if signedIn() && (
+        (me() == resource.data.createdBy && request.resource.data.createdBy == me())
+        || (me() in resource.data.participants
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['settled', 'updatedAt'])));
+      allow delete: if signedIn() && me() == resource.data.createdBy;
+    }
+  }
+}

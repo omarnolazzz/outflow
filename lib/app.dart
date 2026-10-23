@@ -10,6 +10,7 @@ import 'core/motion/motion_widgets.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'core/widgets/outflow_mark.dart';
+import 'features/account/domain/account.dart';
 import 'features/account/presentation/lock_screen.dart';
 import 'features/account/presentation/session_controller.dart';
 import 'features/account/presentation/welcome_screen.dart';
@@ -138,6 +139,21 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
     if (now != null) _openDraft(now);
   }
 
+  /// Publica tu perfil para que tus amigos te encuentren por correo. Sin
+  /// esperar: sin conexión o con un error, la app sigue igual.
+  void _publishProfile(Account account) {
+    try {
+      final social = ref.read(socialRepositoryProvider);
+      if (!social.available) return;
+      social.publishProfile(account).then<void>(
+            (_) {},
+            onError: (Object e) => debugPrint('No se pudo publicar el perfil: $e'),
+          );
+    } catch (e) {
+      debugPrint('No se pudo publicar el perfil: $e');
+    }
+  }
+
   void _openDraft(MovementDraft draft) {
     final context = _navigator.currentContext;
     if (context != null) showMovementSheet(context, draft: draft);
@@ -172,6 +188,7 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
     ref.watch(splitMovementSyncProvider);
 
     ref.listen(sessionControllerProvider, (prev, next) {
+      if (next is Ready && prev is! Ready) _publishProfile(next.account);
       if (next is Ready) {
         final drafts = _pendingLink.takeAll();
         // Se apilan en orden: el más reciente queda arriba.

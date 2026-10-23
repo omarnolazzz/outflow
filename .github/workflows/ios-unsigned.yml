@@ -8,7 +8,7 @@ on:
 jobs:
   build-ios:
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       # Configuración de Firebase / Google (secretos del repositorio). Sin
       # ellos la app compila igual y usa la cuenta de vista previa.

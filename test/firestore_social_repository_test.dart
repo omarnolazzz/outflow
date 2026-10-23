@@ -1,0 +1,144 @@
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:outflow/features/account/domain/account.dart';
+import 'package:outflow/features/friends/data/firestore_social_repository.dart';
+import 'package:outflow/features/friends/data/social_repository.dart';
+import 'package:outflow/features/friends/domain/shared_expense.dart';
+
+void main() {
+  late FakeFirebaseFirestore db;
+  late FirestoreSocialRepository mine;
+  late FirestoreSocialRepository anas;
+
+  const meAccount = Account(uid: 'me', email: 'Gabriel@Mail.com', displayName: 'Gabriel Nolazco');
+  const anaAccount = Account(uid: 'ana', email: 'ana@mail.com', displayName: 'Ana Ruiz', photoUrl: 'https://x/ana.png');
+
+  setUp(() async {
+    db = FakeFirebaseFirestore();
+    mine = FirestoreSocialRepository(db, 'me');
+    anas = FirestoreSocialRepository(db, 'ana');
+    await mine.publishProfile(meAccount);
+    await anas.publishProfile(anaAccount);
+  });
+
+  SharedExpense expense({String id = 'e1'}) {
+    const me = Person(uid: 'me', name: 'Gabriel Nolazco', email: 'gabriel@mail.com');
+    const ana = Person(uid: 'ana', name: 'Ana Ruiz', email: 'ana@mail.com');
+    return SharedExpense(
+      id: id,
+      createdBy: 'me',
+      paidBy: 'me',
+      participants: const ['me', 'ana'],
+      people: const {'me': me, 'ana': ana},
+      title: 'Cena',
+      date: DateTime(2026, 10, 20),
+      currency: 'PEN',
+      totalMinor: 10000,
+      categoryId: 'food',
+      mode: SplitMode.equal,
+      shares: const {'me': 5000, 'ana': 5000},
+      updatedAt: DateTime(2026, 10, 20),
+    );
+  }
+
+  test('publishProfile guarda el correo en minúsculas y sin espacios', () async {
+    final doc = await db.collection('users').doc('me').get();
+    expect(doc.data()!['email'], 'gabriel@mail.com');
+    expect(doc.data()!['name'], 'Gabriel Nolazco');
+    expect(doc.data()!.containsKey('updatedAt'), isTrue);
+  });
+
+  test('addFriend envía la solicitud y no la repite', () async {
+    expect(await mine.addFriend(' ANA@Mail.com '), AddFriendResult.sent);
+    final req = await db.collection('friendRequests').doc('me_ana').get();
+    expect(req.exists, isTrue);
+    expect(req.data()!['status'], 'pending');
+    expect(req.data()!['from'], 'me');
+    expect(req.data()!['to'], 'ana');
+
+    expect(await mine.addFriend('ana@mail.com'), AddFriendResult.alreadySent);
+
+    final outgoing = await mine.watchOutgoing().first;
+    expect(outgoing.map((r) => r.to.uid), ['ana']);
+    final incoming = await anas.watchIncoming().first;
+    expect(incoming.map((r) => r.id), ['me_ana']);
+    expect(incoming.single.from.name, 'Gabriel Nolazco');
+  });
+
+  test('addFriend: correo desconocido y el tuyo', () async {
+    expect(await mine.addFriend('nadie@mail.com'), AddFriendResult.notOnOutflow);
+    expect(await mine.addFriend(' gabriel@MAIL.com'), AddFriendResult.self);
+  });
+
+  test('si Ana ya te invitó, addFriend la acepta y sois amigos', () async {
+    expect(await anas.addFriend('gabriel@mail.com'), AddFriendResult.sent);
+    expect(await mine.addFriend('ana@mail.com'), AddFriendResult.accepted);
+
+    final req = await db.collection('friendRequests').doc('ana_me').get();
+    expect(req.data()!['status'], 'accepted');
+    expect((await db.collection('friendRequests').doc('me_ana').get()).exists, isFalse);
+
+    expect((await mine.watchFriends().first).map((p) => p.uid), ['ana']);
+    expect((await anas.watchFriends().first).map((p) => p.uid), ['me']);
+    expect(await mine.watchIncoming().first, isEmpty);
+    expect(await mine.addFriend('ana@mail.com'), AddFriendResult.alreadyFriends);
+  });
+
+  test('answer acepta o rechaza (borra) la solicitud', () async {
+    await anas.addFriend('gabriel@mail.com');
+    await mine.answer('ana_me', accept: false);
+    expect((await db.collection('friendRequests').doc('ana_me').get()).exists, isFalse);
+    expect(await mine.watchFriends().first, isEmpty);
+
+    await anas.addFriend('gabriel@mail.com');
+    await mine.answer('ana_me', accept: true);
+    expect((await mine.watchFriends().first).single.name, 'Ana Ruiz');
+  });
+
+  test('watchExpenses solo emite a participantes y viene del servidor', () async {
+    await mine.saveExpense(expense());
+    final snap = await mine.watchExpenses().first;
+    expect(snap.expenses.map((e) => e.id), ['e1']);
+    expect(snap.fromCache, isFalse);
+    expect((await anas.watchExpenses().first).expenses.single.title, 'Cena');
+
+    final javi = FirestoreSocialRepository(db, 'javi');
+    expect((await javi.watchExpenses().first).expenses, isEmpty);
+  });
+
+  test('settle cambia solo settled.<deudor>', () async {
+    await mine.saveExpense(expense());
+    final before = (await db.collection('expenses').doc('e1').get()).data()!;
+    await anas.settle('e1', 'ana');
+    final after = (await db.collection('expenses').doc('e1').get()).data()!;
+
+    expect((after['settled'] as Map).keys, ['ana']);
+    expect((after['settled'] as Map)['ana']['by'], 'ana');
+    final changed = {
+      for (final k in {...before.keys, ...after.keys})
+        if (before[k].toString() != after[k].toString()) k,
+    };
+    expect(changed, {'settled', 'updatedAt'});
+
+    final e = (await mine.watchExpenses().first).expenses.single;
+    expect(e.isSettled('ana'), isTrue);
+  });
+
+  test('deleteExpense lo quita del stream', () async {
+    await mine.saveExpense(expense());
+    await mine.saveExpense(expense(id: 'e2'));
+    await mine.deleteExpense('e1');
+    expect((await mine.watchExpenses().first).expenses.map((e) => e.id), ['e2']);
+  });
+
+  test('UnavailableSocialRepository: no disponible, vacío y no escribe', () async {
+    const repo = UnavailableSocialRepository();
+    expect(repo.available, isFalse);
+    expect(await repo.watchFriends().first, isEmpty);
+    final snap = await repo.watchExpenses().first;
+    expect(snap.expenses, isEmpty);
+    expect(snap.fromCache, isTrue);
+    expect(() => repo.addFriend('a@b.com'), throwsStateError);
+    expect(() => repo.saveExpense(expense()), throwsStateError);
+  });
+}
