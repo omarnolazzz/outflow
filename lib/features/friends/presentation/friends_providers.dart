@@ -17,10 +17,11 @@ final socialRepositoryProvider = Provider<SocialRepository>((ref) {
   // Por uid: bloquear y desbloquear no recrea el repositorio ni sus streams.
   final uid = ref.watch(currentAccountProvider.select((a) => a?.uid));
   final auth = ref.watch(authServiceProvider);
-  if (kIsWeb || !FirebaseConfig.isConfigured || !auth.verifiesIdentity || uid == null) {
+  final account = ref.read(currentAccountProvider);
+  if (kIsWeb || !FirebaseConfig.isConfigured || !auth.verifiesIdentity || uid == null || account == null) {
     return const UnavailableSocialRepository();
   }
-  return FirestoreSocialRepository(FirebaseFirestore.instance, uid);
+  return FirestoreSocialRepository(FirebaseFirestore.instance, account);
 });
 
 final friendsProvider = StreamProvider<List<Person>>((ref) => ref.watch(socialRepositoryProvider).watchFriends());

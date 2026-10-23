@@ -14,16 +14,22 @@ String normalizeEmail(String email) => email.trim().toLowerCase();
 /// [SocialRepository] sobre Cloud Firestore.
 ///
 /// Las consultas tienen la forma que exigen las reglas (`firestore.rules`):
-/// solicitudes por `from == yo` o `to == yo`, gastos por
-/// `participants arrayContains yo` y búsqueda de correo con `limit(1)`.
+/// solicitudes por `from == yo` o `to == yo` y gastos por
+/// `participants arrayContains yo`. Los correos se buscan con `get` en
+/// `emailIndex/{correo}` (no hay consultas sobre `users`).
 class FirestoreSocialRepository implements SocialRepository {
-  FirestoreSocialRepository(this._db, this._myUid, {DateTime Function()? now}) : _now = now ?? DateTime.now;
+  FirestoreSocialRepository(this._db, this._account, {DateTime Function()? now}) : _now = now ?? DateTime.now;
 
   final FirebaseFirestore _db;
-  final String _myUid;
+
+  /// La cuenta con sesión: de ella sale tu copia en las solicitudes.
+  final Account _account;
   final DateTime Function() _now;
 
+  String get _myUid => _account.uid;
+
   CollectionReference<Map<String, dynamic>> get _users => _db.collection('users');
+  CollectionReference<Map<String, dynamic>> get _emailIndex => _db.collection('emailIndex');
   CollectionReference<Map<String, dynamic>> get _requests => _db.collection('friendRequests');
   CollectionReference<Map<String, dynamic>> get _expenses => _db.collection('expenses');
 
@@ -33,13 +39,32 @@ class FirestoreSocialRepository implements SocialRepository {
   @override
   bool get available => true;
 
+  /// Perfil e índice de correo juntos (las reglas exigen que el correo sea el
+  /// de la cuenta con sesión).
   @override
-  Future<void> publishProfile(Account me) => _users.doc(me.uid).set({
+  Future<void> publishProfile(Account me) {
+    final email = normalizeEmail(me.email);
+    final batch = _db.batch()
+      ..set(_users.doc(me.uid), {
         'name': me.displayName,
-        'email': normalizeEmail(me.email),
+        'email': email,
         'photoUrl': me.photoUrl,
         'updatedAt': FieldValue.serverTimestamp(),
       });
+    if (_validDocId(email)) batch.set(_emailIndex.doc(email), {'uid': me.uid});
+    return batch.commit();
+  }
+
+  /// Un id de documento no puede estar vacío ni contener '/'.
+  static bool _validDocId(String id) => id.isNotEmpty && !id.contains('/');
+
+  /// Tu copia en las solicitudes, sacada de la cuenta (no de la caché).
+  Person get _mePerson => Person(
+        uid: _myUid,
+        name: _account.displayName,
+        email: normalizeEmail(_account.email),
+        photoUrl: _account.photoUrl,
+      );
 
   // ---------------------------------------------------------------- Amigos
 
@@ -97,39 +122,41 @@ class FirestoreSocialRepository implements SocialRepository {
               if ((d.data()['status'] ?? _pending) == _pending) ?_request(d),
           ]);
 
-  /// Mi perfil publicado (para la copia embebida en la solicitud).
-  Future<Person> _me() async {
-    try {
-      final d = await _users.doc(_myUid).get();
-      final data = d.data();
-      if (data != null) return _person(_myUid, data);
-    } catch (e) {
-      debugPrint('No se pudo leer tu perfil: $e');
-    }
-    return Person(uid: _myUid, name: '', email: '');
-  }
-
   @override
   Future<AddFriendResult> addFriend(String email) async {
     final wanted = normalizeEmail(email);
-    final me = await _me();
-    if (wanted.isEmpty) return AddFriendResult.notOnOutflow;
+    final me = _mePerson;
     if (wanted == me.email) return AddFriendResult.self;
+    if (!_validDocId(wanted)) return AddFriendResult.notOnOutflow;
 
-    // Desde el servidor: una caché vieja no puede decir que alguien no está.
-    final QuerySnapshot<Map<String, dynamic>> found;
+    // Índice de correo y perfil, desde el servidor: una caché vieja no puede
+    // decir que alguien no está.
+    const server = GetOptions(source: Source.server);
+    final DocumentSnapshot<Map<String, dynamic>> index;
+    final DocumentSnapshot<Map<String, dynamic>> profile;
     try {
-      found = await _users.where('email', isEqualTo: wanted).limit(1).get(const GetOptions(source: Source.server));
+      index = await _emailIndex.doc(wanted).get(server);
+      if (index.metadata.isFromCache) return AddFriendResult.offline;
+      final uid = index.data()?['uid'];
+      if (!index.exists || uid is! String || uid.isEmpty) return AddFriendResult.notOnOutflow;
+      if (uid == _myUid) return AddFriendResult.self;
+      profile = await _users.doc(uid).get(server);
+      if (profile.metadata.isFromCache) return AddFriendResult.offline;
     } on FirebaseException catch (e) {
       debugPrint('Búsqueda de amigo sin servidor: $e');
       return AddFriendResult.offline;
     }
-    if (found.metadata.isFromCache) return AddFriendResult.offline;
-    if (found.docs.isEmpty) return AddFriendResult.notOnOutflow;
-    final himDoc = found.docs.first;
-    final himUid = himDoc.id;
-    if (himUid == _myUid) return AddFriendResult.self;
-    final him = _person(himUid, himDoc.data());
+    final himUid = index.data()!['uid'] as String;
+    final data = profile.data();
+    // El correo es el del índice (validado por las reglas), no el del perfil.
+    final him = data == null
+        ? Person(uid: himUid, name: '', email: wanted)
+        : Person(
+            uid: himUid,
+            name: data['name'] as String? ?? '',
+            email: wanted,
+            photoUrl: data['photoUrl'] as String?,
+          );
 
     // Consultas en vez de `get` por id: las reglas no dejan leer un documento
     // que no existe (no hay `resource.data`), pero sí estas consultas.

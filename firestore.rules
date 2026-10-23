@@ -4,17 +4,31 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function me() { return request.auth.uid; }
 
+    function myEmail() { return request.auth.token.email.lower(); }
+
     match /users/{uid} {
       allow get: if signedIn();
-      allow list: if signedIn() && request.query.limit <= 1;
-      allow write: if signedIn() && me() == uid;
+      allow write: if signedIn() && me() == uid
+        && request.resource.data.email == myEmail();
+    }
+
+    match /emailIndex/{email} {
+      allow get: if signedIn();
+      allow create, update: if signedIn() && email == myEmail()
+        && request.resource.data.uid == me()
+        && request.resource.data.keys().hasOnly(['uid']);
     }
 
     match /friendRequests/{id} {
       allow read: if signedIn() && (resource.data.from == me() || resource.data.to == me());
       allow create: if signedIn() && request.resource.data.from == me()
         && id == me() + '_' + request.resource.data.to
-        && request.resource.data.status == 'pending';
+        && request.resource.data.to != me()
+        && request.resource.data.status == 'pending'
+        && request.resource.data.fromPerson.uid == me()
+        && request.resource.data.fromPerson.email == myEmail()
+        && request.resource.data.toPerson.uid == request.resource.data.to
+        && request.resource.data.keys().hasOnly(['from', 'to', 'fromPerson', 'toPerson', 'status', 'createdAt']);
       allow update: if signedIn() && me() == resource.data.to
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
         && request.resource.data.status == 'accepted';

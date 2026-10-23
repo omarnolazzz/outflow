@@ -15,8 +15,8 @@ void main() {
 
   setUp(() async {
     db = FakeFirebaseFirestore();
-    mine = FirestoreSocialRepository(db, 'me');
-    anas = FirestoreSocialRepository(db, 'ana');
+    mine = FirestoreSocialRepository(db, meAccount);
+    anas = FirestoreSocialRepository(db, anaAccount);
     await mine.publishProfile(meAccount);
     await anas.publishProfile(anaAccount);
   });
@@ -46,6 +46,42 @@ void main() {
     expect(doc.data()!['email'], 'gabriel@mail.com');
     expect(doc.data()!['name'], 'Gabriel Nolazco');
     expect(doc.data()!.containsKey('updatedAt'), isTrue);
+  });
+
+  test('publishProfile escribe el índice de correo (id = correo normalizado) → {uid}', () async {
+    final idx = await db.collection('emailIndex').doc('gabriel@mail.com').get();
+    expect(idx.exists, isTrue);
+    expect(idx.data(), {'uid': 'me'});
+  });
+
+  test('addFriend resuelve por el índice de correo, no por el campo email de users', () async {
+    // Un impostor con el correo de Ana en su perfil no la suplanta: manda el índice.
+    await db.collection('users').doc('impostor').set({'name': 'Falsa', 'email': 'ana@mail.com'});
+    expect(await mine.addFriend('ana@mail.com'), AddFriendResult.sent);
+    final req = await db.collection('friendRequests').doc('me_ana').get();
+    expect(req.data()!['toPerson']['name'], 'Ana Ruiz');
+    expect(req.data()!['fromPerson'], {
+      'uid': 'me',
+      'name': 'Gabriel Nolazco',
+      'email': 'gabriel@mail.com',
+      'photoUrl': null,
+    });
+  });
+
+  test('sin entrada en el índice → notOnOutflow (aunque haya un users con ese correo)', () async {
+    await db.collection('users').doc('luis').set({'name': 'Luis', 'email': 'luis@mail.com'});
+    expect(await mine.addFriend('luis@mail.com'), AddFriendResult.notOnOutflow);
+    expect(await mine.addFriend('a/b@mail.com'), AddFriendResult.notOnOutflow);
+  });
+
+  test('fromPerson sale de tu cuenta aunque no hayas publicado el perfil', () async {
+    final fresh = FakeFirebaseFirestore();
+    final me = FirestoreSocialRepository(fresh, meAccount);
+    await FirestoreSocialRepository(fresh, anaAccount).publishProfile(anaAccount);
+    expect(await me.addFriend('ana@mail.com'), AddFriendResult.sent);
+    final req = await fresh.collection('friendRequests').doc('me_ana').get();
+    expect(req.data()!['fromPerson']['email'], 'gabriel@mail.com');
+    expect(await me.addFriend('GABRIEL@mail.com '), AddFriendResult.self);
   });
 
   test('addFriend envía la solicitud y no la repite', () async {
@@ -102,7 +138,7 @@ void main() {
     expect(snap.fromCache, isFalse);
     expect((await anas.watchExpenses().first).expenses.single.title, 'Cena');
 
-    final javi = FirestoreSocialRepository(db, 'javi');
+    final javi = FirestoreSocialRepository(db, const Account(uid: 'javi', email: 'javi@mail.com', displayName: 'Javi'));
     expect((await javi.watchExpenses().first).expenses, isEmpty);
   });
 
