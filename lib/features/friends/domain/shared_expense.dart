@@ -17,6 +17,14 @@ class Person {
     return i < 0 ? t : t.substring(0, i);
   }
 
+  /// Primer nombre; sin nombre, la parte local del correo; sin nada, "Amigo".
+  String get shortName {
+    final first = firstName;
+    if (first.isNotEmpty) return first;
+    final local = email.trim().split('@').first;
+    return local.isEmpty ? 'Amigo' : local;
+  }
+
   Map<String, Object?> toJson() => {'uid': uid, 'name': name, 'email': email, 'photoUrl': photoUrl};
 
   factory Person.fromJson(Map<String, Object?> json) => Person(

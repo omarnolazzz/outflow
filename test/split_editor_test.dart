@@ -317,6 +317,50 @@ void main() {
       expect(movements.saved, hasLength(1));
     });
 
+    SharedExpense settledLunch() => dinner().copyWith(
+          totalMinor: 5000,
+          shares: const {'u': 2500, 'ana': 2500},
+          settled: {'ana': Settlement(by: 'ana', at: DateTime(2026, 10, 19, 12))},
+        );
+
+    testWidgets('si la parte de un deudor que ya pagó crece, su pago deja de contar', (tester) async {
+      final social = MemorySocial(friends: [ana], expenses: [settledLunch()]);
+      await pump(tester, social, editing: settledLunch());
+      await tester.tap(find.text('S/ 50'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('0')); // S/ 50 → S/ 500
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      final e = social.expenses.single;
+      expect(e.shareOf('ana'), 25000);
+      expect(e.isSettled('ana'), isFalse);
+    });
+
+    testWidgets('un pago marcado mientras el editor estaba abierto no se pierde', (tester) async {
+      final social = MemorySocial(friends: [ana], expenses: [dinner()]);
+      await pump(tester, social, editing: dinner());
+      await social.settle('e1', 'ana'); // Ana marca su parte desde su móvil
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Cena'), 'Cena en Barranco');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      final e = social.expenses.single;
+      expect(e.title, 'Cena en Barranco');
+      expect(e.isSettled('ana'), isTrue);
+    });
+
+    testWidgets('si la parte no cambia, el pago se conserva', (tester) async {
+      final social = MemorySocial(friends: [ana], expenses: [settledLunch()]);
+      await pump(tester, social, editing: settledLunch());
+      await tester.enterText(find.widgetWithText(TextField, 'Cena'), 'Almuerzo');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      final e = social.expenses.single;
+      expect(e.title, 'Almuerzo');
+      expect(e.isSettled('ana'), isTrue);
+    });
+
     testWidgets('Borrar gasto compartido pide confirmación y lo borra', (tester) async {
       final social = MemorySocial(friends: [ana], expenses: [dinner()]);
       await pump(tester, social, editing: dinner());

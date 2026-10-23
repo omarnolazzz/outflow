@@ -42,7 +42,6 @@ class SplitDraft {
     required this.date,
     required this.categoryId,
     this.items = const [],
-    this.sourceMovementId,
   });
 
   final int totalMinor;
@@ -53,9 +52,6 @@ class SplitDraft {
 
   /// Productos del ticket; con ellos se puede repartir por productos.
   final List<ReceiptItem> items;
-
-  /// Gasto de la wallet que este reparto reemplaza (se borra al guardar).
-  final String? sourceMovementId;
 }
 
 /// Abre el editor para dividir un gasto nuevo (con [draft] o en blanco) o
@@ -265,6 +261,14 @@ class _SplitEditorScreenState extends ConsumerState<SplitEditorScreen> {
     if (picked != null) setState(() => _categoryId = picked);
   }
 
+  /// El pago de [uid] sigue valiendo si aún participa, no es quien pagó y su
+  /// parte no cambió (si creció, ya no cubre lo que debe).
+  bool _keepsSettlement(SharedExpense editing, String uid, List<String> participants, Map<String, int> shares) =>
+      participants.contains(uid) &&
+      uid != _paidBy &&
+      (shares[uid] ?? 0) > 0 &&
+      shares[uid] == editing.shares[uid];
+
   Future<void> _save({
     required Person me,
     required List<Person> everyone,
@@ -278,11 +282,10 @@ class _SplitEditorScreenState extends ConsumerState<SplitEditorScreen> {
     final date = _date ?? now;
     final title = _title.text.trim();
     final editing = widget.editing;
-    final source = widget.draft?.sourceMovementId;
 
     // Un gasto nuevo puede ser un pago que ya está en la wallet (Google Pay, Apple Pay...).
     Movement? matched;
-    if (editing == null && source == null) {
+    if (editing == null) {
       final candidates = findMatchingPayments(
         movements: movements,
         amountMinor: _amount.minor,
@@ -330,10 +333,10 @@ class _SplitEditorScreenState extends ConsumerState<SplitEditorScreen> {
             mode: _mode,
             shares: shares,
             items: items,
-            // Una deuda saldada deja de estarlo si esa persona ya no debe nada.
+            // Un pago se conserva solo si esa persona sigue debiendo lo mismo.
             settled: {
               for (final e in editing.settled.entries)
-                if (participants.contains(e.key) && e.key != _paidBy && (shares[e.key] ?? 0) > 0) e.key: e.value,
+                if (_keepsSettlement(editing, e.key, participants, shares)) e.key: e.value,
             },
             updatedAt: now,
           );
@@ -341,9 +344,19 @@ class _SplitEditorScreenState extends ConsumerState<SplitEditorScreen> {
     setState(() => _saving = true);
     // Firestore solo responde cuando el servidor confirma: sin red nunca
     // termina. No se espera; los streams ya reflejan el cambio desde la caché.
-    fireWrite(context, ref.read(socialRepositoryProvider).saveExpense(expense));
-    final replaced = matched?.id ?? source;
-    if (replaced != null) await ref.read(walletActionsProvider).delete(replaced);
+    final social = ref.read(socialRepositoryProvider);
+    fireWrite(
+      context,
+      editing == null
+          ? social.saveExpense(expense)
+          // Al editar no se reescribe `settled` entero: solo se quitan los
+          // pagos que esta edición invalida, sin pisar los marcados mientras tanto.
+          : social.updateExpense(expense, unsettle: {
+              for (final k in editing.settled.keys)
+                if (!expense.settled.containsKey(k)) k,
+            }),
+    );
+    if (matched != null) await ref.read(walletActionsProvider).delete(matched.id);
     HapticFeedback.mediumImpact();
     if (!mounted) return;
     Navigator.of(context).pop();

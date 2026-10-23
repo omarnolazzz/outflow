@@ -34,6 +34,11 @@ abstract interface class SocialRepository {
 
   /// Solo quien creó el gasto lo escribe entero.
   Future<void> saveExpense(SharedExpense e);
+
+  /// El creador edita un gasto: escribe todo menos `settled`, para no pisar
+  /// los pagos que otros marquen mientras tanto. Solo borra los pagos de
+  /// [unsettle] (los que la edición invalidó).
+  Future<void> updateExpense(SharedExpense e, {Set<String> unsettle = const {}});
   Future<void> deleteExpense(String id);
 
   /// Marca como pagada la parte de [debtorUid] (solo toca `settled.<uid>`).
@@ -74,6 +79,9 @@ class UnavailableSocialRepository implements SocialRepository {
 
   @override
   Future<void> saveExpense(SharedExpense e) async => _unavailable();
+
+  @override
+  Future<void> updateExpense(SharedExpense e, {Set<String> unsettle = const {}}) async => _unavailable();
 
   @override
   Future<void> deleteExpense(String id) async => _unavailable();

@@ -177,6 +177,15 @@ class MemorySocial implements SocialRepository {
     _expenses.add(_snapshot);
   }
 
+  /// Como Firestore: todo menos `settled`, que solo pierde [unsettle].
+  @override
+  Future<void> updateExpense(SharedExpense e, {Set<String> unsettle = const {}}) async {
+    final i = expenses.indexWhere((x) => x.id == e.id);
+    final current = expenses[i];
+    expenses[i] = e.copyWith(settled: {...current.settled}..removeWhere((k, _) => unsettle.contains(k)));
+    _expenses.add(_snapshot);
+  }
+
   @override
   Future<void> deleteExpense(String id) async {
     expenses.removeWhere((x) => x.id == id);

@@ -48,7 +48,7 @@ SplitMovementChanges reconcileSplitMovements({
     final current = byId[id];
     final others = [
       for (final u in e.participants)
-        if (u != myUid) e.people[u]?.firstName ?? u,
+        if (u != myUid) e.people[u]?.shortName ?? 'Amigo',
     ];
     final note =
         'Dividido con ${others.join(', ')} · total ${Fmt.money(Money(e.totalMinor, e.currency))}';

@@ -168,20 +168,26 @@ class FirestoreSocialRepository implements SocialRepository {
     if (status(mineToHim) == _accepted || status(hisToMe) == _accepted) return AddFriendResult.alreadyFriends;
     if (status(mineToHim) == _pending) return AddFriendResult.alreadySent;
     if (status(hisToMe) == _pending) {
-      await _requests.doc(hisToMe.docs.first.id).update({'status': _accepted});
+      _fire(_requests.doc(hisToMe.docs.first.id).update({'status': _accepted}));
       return AddFriendResult.accepted;
     }
 
-    await _requests.doc('${_myUid}_$himUid').set({
+    _fire(_requests.doc('${_myUid}_$himUid').set({
       'from': _myUid,
       'to': himUid,
       'fromPerson': me.toJson(),
       'toPerson': him.toJson(),
       'status': _pending,
       'createdAt': FieldValue.serverTimestamp(),
-    });
+    }));
     return AddFriendResult.sent;
   }
+
+  /// Lanza una escritura sin esperar a que el servidor la confirme (sin red
+  /// nunca lo hace; la caché local ya la refleja). Si falla, solo se registra.
+  static void _fire(Future<void> write) => unawaited(write.catchError((Object e) {
+        debugPrint('Escritura de solicitud de amistad fallida: $e');
+      }));
 
   @override
   Future<void> answer(String requestId, {required bool accept}) => accept
@@ -212,6 +218,18 @@ class FirestoreSocialRepository implements SocialRepository {
 
   @override
   Future<void> saveExpense(SharedExpense e) => _expenses.doc(e.id).set(e.toJson());
+
+  /// `update()` con cada campo salvo `settled`: un pago marcado por otro
+  /// mientras el creador editaba se conserva. Las reglas dejan al creador
+  /// cambiar cualquier campo.
+  @override
+  Future<void> updateExpense(SharedExpense e, {Set<String> unsettle = const {}}) {
+    final data = e.toJson()..remove('settled');
+    return _expenses.doc(e.id).update({
+      ...data,
+      for (final uid in unsettle) 'settled.$uid': FieldValue.delete(),
+    });
+  }
 
   @override
   Future<void> deleteExpense(String id) => _expenses.doc(id).delete();

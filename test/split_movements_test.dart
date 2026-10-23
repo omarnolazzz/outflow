@@ -56,6 +56,16 @@ void main() {
     expect(m.note, startsWith('Dividido con Ana, Javi · total '));
   });
 
+  test('un nombre vacío usa la parte local del correo, o "Amigo"', () {
+    final e = expense().copyWith(people: {
+      'me': me,
+      'ana': const Person(uid: 'ana', name: '  ', email: 'ana.ruiz@x.com'),
+      'javi': const Person(uid: 'javi', name: '', email: ''),
+    });
+    final m = run([e], const []).upsert.single;
+    expect(m.note, startsWith('Dividido con ana.ruiz, Amigo · total '));
+  });
+
   test('categoría desconocida cae en Otros', () {
     final r = run([expense(categoryId: 'raro')], const []);
     expect(r.upsert.single.categoryId, 'expense_other');

@@ -1,5 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mock_exceptions/mock_exceptions.dart';
 import 'package:outflow/features/account/domain/account.dart';
 import 'package:outflow/features/friends/data/firestore_social_repository.dart';
 import 'package:outflow/features/friends/data/social_repository.dart';
@@ -101,6 +103,23 @@ void main() {
     expect(incoming.single.from.name, 'Gabriel Nolazco');
   });
 
+  // Sin red, Firestore no confirma nunca la escritura final: addFriend no la
+  // espera (los streams ya la ven en la caché) y solo registra si falla.
+  test('addFriend no espera ni propaga la escritura de la solicitud', () async {
+    whenCalling(Invocation.method(#set, null))
+        .on(db.collection('friendRequests').doc('me_ana'))
+        .thenThrow(FirebaseException(plugin: 'firestore', message: 'sin red'));
+    expect(await mine.addFriend('ana@mail.com'), AddFriendResult.sent);
+  });
+
+  test('addFriend no espera ni propaga la aceptación', () async {
+    expect(await anas.addFriend('gabriel@mail.com'), AddFriendResult.sent);
+    whenCalling(Invocation.method(#update, null))
+        .on(db.collection('friendRequests').doc('ana_me'))
+        .thenThrow(FirebaseException(plugin: 'firestore', message: 'sin red'));
+    expect(await mine.addFriend('ana@mail.com'), AddFriendResult.accepted);
+  });
+
   test('addFriend: correo desconocido y el tuyo', () async {
     expect(await mine.addFriend('nadie@mail.com'), AddFriendResult.notOnOutflow);
     expect(await mine.addFriend(' gabriel@MAIL.com'), AddFriendResult.self);
@@ -158,6 +177,39 @@ void main() {
 
     final e = (await mine.watchExpenses().first).expenses.single;
     expect(e.isSettled('ana'), isTrue);
+  });
+
+  test('updateExpense no pisa un pago marcado mientras el creador editaba', () async {
+    await mine.saveExpense(expense());
+    final stale = expense(); // lo que el creador tenía al abrir el editor
+    await anas.settle('e1', 'ana');
+    await mine.updateExpense(stale.copyWith(title: 'Cena en Barranco', updatedAt: DateTime(2026, 10, 21)));
+
+    final e = (await mine.watchExpenses().first).expenses.single;
+    expect(e.title, 'Cena en Barranco');
+    expect(e.updatedAt, DateTime(2026, 10, 21));
+    expect(e.isSettled('ana'), isTrue);
+  });
+
+  test('updateExpense borra solo los pagos que el editor quitó', () async {
+    await mine.saveExpense(expense().copyWith(
+      participants: const ['me', 'ana', 'javi'],
+      people: {...expense().people, 'javi': const Person(uid: 'javi', name: 'Javi', email: 'javi@mail.com')},
+      shares: const {'me': 4000, 'ana': 3000, 'javi': 3000},
+    ));
+    await anas.settle('e1', 'ana');
+    await mine.settle('e1', 'javi');
+    final edited = (await mine.watchExpenses().first).expenses.single;
+    await mine.updateExpense(
+      edited.copyWith(totalMinor: 13000, shares: const {'me': 4000, 'ana': 6000, 'javi': 3000}),
+      unsettle: const {'ana'},
+    );
+
+    final e = (await mine.watchExpenses().first).expenses.single;
+    expect(e.totalMinor, 13000);
+    expect(e.shareOf('ana'), 6000);
+    expect(e.isSettled('ana'), isFalse);
+    expect(e.isSettled('javi'), isTrue);
   });
 
   test('deleteExpense lo quita del stream', () async {
