@@ -100,7 +100,8 @@ class WalletActions {
   Future<Movement?> delete(String id) async {
     final all = await _movements.watchAll().first;
     final m = all.where((x) => x.id == id).firstOrNull;
-    if (m == null) return null;
+    // Tu parte de un gasto compartido se gestiona desde Amigos.
+    if (m == null || m.origin == MovementOrigin.split) return null;
     if (m.origin == MovementOrigin.subscription) {
       final s = _settings.read();
       await _settings.save(s.copyWith(deletedChargeIds: {...s.deletedChargeIds, id}));

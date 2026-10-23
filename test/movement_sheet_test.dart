@@ -64,6 +64,21 @@ void main() {
       expect(movements.saved.single.id, m.id);
     });
 
+    test('un gasto compartido (split) no se borra', () async {
+      final m = Movement(
+        id: 'split:e1',
+        kind: MovementKind.expense,
+        amount: const Money(3333, 'PEN'),
+        categoryId: 'food',
+        date: now,
+        createdAt: now,
+        origin: MovementOrigin.split,
+      );
+      final movements = MemoryMovements([m]);
+      expect(await WalletActions(movements, MemorySettings()).delete(m.id), isNull);
+      expect(movements.saved.single.id, m.id);
+    });
+
     test('borrar un gasto manual no toca los cobros borrados', () async {
       final m = Movement(
         id: 'x',
@@ -148,5 +163,53 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Suscripciones'), findsNothing);
     expect(find.text('Comida'), findsOneWidget);
+  });
+
+  testWidgets('un gasto compartido solo deja editar categoría y nota', (tester) async {
+    final split = Movement(
+      id: 'split:e1',
+      kind: MovementKind.expense,
+      amount: const Money(3333, 'PEN'),
+      categoryId: 'food',
+      date: now,
+      createdAt: now,
+      title: 'Cena',
+      origin: MovementOrigin.split,
+    );
+    final movements = MemoryMovements([split]);
+    final container = ProviderContainer(overrides: [
+      nowProvider.overrideWithValue(now),
+      movementRepositoryProvider.overrideWithValue(movements),
+      walletSettingsRepositoryProvider.overrideWithValue(MemorySettings()),
+      categoriesProvider.overrideWith((ref) => Stream.value(defaultCategories())),
+    ]);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showMovementSheet(context, editing: split),
+            child: const Text('abrir'),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('abrir'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Gasto compartido · se edita en Amigos'), findsOneWidget);
+    expect(find.bySemanticsLabel('Borrar'), findsNothing);
+    expect(find.text('Comida'), findsOneWidget, reason: 'la categoría sí se edita');
+    expect(find.text('7'), findsNothing, reason: 'sin teclado de importe');
+
+    await tester.tap(find.text('Transporte'));
+    await tester.pump();
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
+    final saved = movements.saved.single;
+    expect(saved.categoryId, 'transport');
+    expect(saved.amount, const Money(3333, 'PEN'));
+    expect(saved.title, 'Cena');
   });
 }

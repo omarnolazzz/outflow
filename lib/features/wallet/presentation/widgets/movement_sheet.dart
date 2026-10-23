@@ -68,6 +68,9 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
   /// Un cobro de suscripción solo admite cambiar importe, fecha y nota.
   bool get _isCharge => _e?.origin == MovementOrigin.subscription;
 
+  /// Tu parte de un gasto compartido solo admite cambiar categoría y nota.
+  bool get _isSplit => _e?.origin == MovementOrigin.split;
+
   @override
   void initState() {
     super.initState();
@@ -134,11 +137,11 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
             createdAt: now,
           )
         : _e!.copyWith(
-            kind: _isCharge ? null : _kind,
+            kind: _isCharge || _isSplit ? null : _kind,
             amount: money,
             categoryId: _isCharge ? null : categoryId,
             date: when,
-            title: _isCharge ? null : _title.text.trim(),
+            title: _isCharge || _isSplit ? null : _title.text.trim(),
             note: _note.text.trim(),
             // Solo un importe cambiado a mano protege el cobro de los cambios de precio.
             userEdited: _isCharge && money != _e!.amount ? true : null,
@@ -186,7 +189,9 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
     return SheetScaffold(
       title: _e == null ? (isExpense ? 'Nuevo gasto' : 'Nuevo ingreso') : 'Editar',
       closeIcon: true,
-      trailing: _e != null
+      trailing: _isSplit
+          ? null
+          : _e != null
           ? CircleIconButton(icon: LucideIcons.trash2, label: 'Borrar', onTap: _delete)
           : widget.draft == null && isExpense
               ? CircleIconButton(
@@ -203,7 +208,7 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
       bottom: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          AmountKeypad(input: _amount),
+          if (!_isSplit) AmountKeypad(input: _amount),
           const SizedBox(height: 8),
           PrimaryButton(
             label: 'Guardar',
@@ -215,7 +220,7 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
         children: [
-          if (!_isCharge)
+          if (!_isCharge && !_isSplit)
             Entrance(
               child: SegmentedControl<MovementKind>(
                 values: MovementKind.values,
@@ -268,6 +273,15 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
             ),
           ],
           const SizedBox(height: 18),
+          if (_isSplit) ...[
+            Center(
+              child: Text(
+                'Gasto compartido · se edita en Amigos',
+                style: AppType.footnote.copyWith(color: AppColors.inkTertiary),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           if (!_isCharge)
             Entrance(
               index: 2,
@@ -291,7 +305,7 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
             child: ListRow(
               label: 'Fecha',
               value: DateUtils.isSameDay(date, now) ? 'Hoy' : _capitalize(Fmt.dateLong(dateOnly(date))),
-              onTap: () => _pickDate(date),
+              onTap: _isSplit ? null : () => _pickDate(date),
             ),
           ),
           const SizedBox(height: 8),
@@ -302,7 +316,7 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
               child: Column(
                 children: [
-                  if (!_isCharge) ...[
+                  if (!_isCharge && !_isSplit) ...[
                     _Field(controller: _title, hint: isExpense ? 'Comercio o concepto' : 'Concepto'),
                     const Divider(height: 1),
                   ],

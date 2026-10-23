@@ -29,6 +29,7 @@ import 'features/wallet/domain/movement.dart';
 import 'features/notifications/domain/charge_answer.dart';
 import 'features/notifications/presentation/notification_providers.dart';
 import 'features/subscriptions/presentation/subscription_providers.dart';
+import 'features/friends/presentation/friends_providers.dart';
 import 'features/home/presentation/home_screen.dart';
 import 'features/subscriptions/presentation/screens/subscription_detail_screen.dart';
 import 'features/subscriptions/presentation/screens/subscriptions_screen.dart';
@@ -168,6 +169,7 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
 
     // Los cobros de suscripciones se reflejan como gastos de la wallet.
     ref.watch(chargeMovementSyncProvider);
+    ref.watch(splitMovementSyncProvider);
 
     ref.listen(sessionControllerProvider, (prev, next) {
       if (next is Ready) {
