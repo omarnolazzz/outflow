@@ -122,6 +122,14 @@ class WalletActions {
     return m;
   }
 
+  /// Recuerda que ya se respondió "¿Es este pago?" para el gasto compartido
+  /// [expenseId], para no volver a preguntar.
+  Future<void> dismissSplitMatch(String expenseId) async {
+    final s = _settings.read();
+    if (s.dismissedSplitMatchIds.contains(expenseId)) return;
+    await _settings.save(s.copyWith(dismissedSplitMatchIds: {...s.dismissedSplitMatchIds, expenseId}));
+  }
+
   Future<void> restore(Movement m) async {
     final s = _settings.read();
     if (s.deletedChargeIds.contains(m.id)) {

@@ -10,6 +10,7 @@ class WalletSettings {
     this.onboardingDone = false,
     this.faceIdEnabled = false,
     this.deletedChargeIds = const {},
+    this.dismissedSplitMatchIds = const {},
     this.ownerUid,
   });
 
@@ -27,6 +28,10 @@ class WalletSettings {
   /// Cobros de suscripción que el usuario borró: no se vuelven a crear.
   final Set<String> deletedChargeIds;
 
+  /// Gastos compartidos en los que el usuario ya respondió a "¿Es este
+  /// pago?": no se vuelve a preguntar.
+  final Set<String> dismissedSplitMatchIds;
+
   /// Cuenta de Google dueña de esta wallet: otra cuenta no la abre.
   final String? ownerUid;
 
@@ -37,6 +42,7 @@ class WalletSettings {
     bool? onboardingDone,
     bool? faceIdEnabled,
     Set<String>? deletedChargeIds,
+    Set<String>? dismissedSplitMatchIds,
     String? ownerUid,
   }) =>
       WalletSettings(
@@ -46,6 +52,7 @@ class WalletSettings {
         onboardingDone: onboardingDone ?? this.onboardingDone,
         faceIdEnabled: faceIdEnabled ?? this.faceIdEnabled,
         deletedChargeIds: deletedChargeIds ?? this.deletedChargeIds,
+        dismissedSplitMatchIds: dismissedSplitMatchIds ?? this.dismissedSplitMatchIds,
         ownerUid: ownerUid ?? this.ownerUid,
       );
 
@@ -56,6 +63,7 @@ class WalletSettings {
         'onboardingDone': onboardingDone,
         'faceIdEnabled': faceIdEnabled,
         'deletedChargeIds': (deletedChargeIds.toList()..sort()),
+        'dismissedSplitMatchIds': (dismissedSplitMatchIds.toList()..sort()),
         'ownerUid': ownerUid,
       };
 
@@ -68,6 +76,7 @@ class WalletSettings {
       onboardingDone: json['onboardingDone'] as bool? ?? false,
       faceIdEnabled: json['faceIdEnabled'] as bool? ?? false,
       deletedChargeIds: {...?(json['deletedChargeIds'] as List?)?.cast<String>()},
+      dismissedSplitMatchIds: {...?(json['dismissedSplitMatchIds'] as List?)?.cast<String>()},
       ownerUid: json['ownerUid'] as String?,
     );
   }

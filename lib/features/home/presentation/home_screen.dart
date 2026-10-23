@@ -15,6 +15,7 @@ import '../../account/presentation/account_avatar.dart';
 import '../../account/presentation/session_controller.dart';
 import '../../friends/presentation/debts_card.dart';
 import '../../friends/presentation/friends_providers.dart';
+import '../../friends/presentation/split_match_card.dart';
 import '../../merchants/presentation/merchant_providers.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../../shell/presentation/app_shell.dart';
@@ -133,6 +134,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     const Padding(
                       padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
                       child: DebtsCard(),
+                    ),
+                  ),
+                // Un gasto que pagaste tú y repartió otro, quizá ya registrado.
+                if (ref.watch(splitPaymentMatchesProvider).isNotEmpty)
+                  e(
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: SplitMatchCards(),
                     ),
                   ),
                 if (upcoming.isNotEmpty) ...[

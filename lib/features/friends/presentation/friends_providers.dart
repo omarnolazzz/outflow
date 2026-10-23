@@ -61,6 +61,22 @@ final balancesProvider = Provider<List<Balance>>((ref) {
   return computeBalances(expenses, uid);
 });
 
+/// Gastos que pagaste tú y repartió otra persona cuyo pago quizá ya estaba
+/// en la wallet: Inicio pregunta "¿Es este pago?" para no contarlo dos veces.
+final splitPaymentMatchesProvider = Provider<List<SplitPaymentMatch>>((ref) {
+  final uid = ref.watch(currentAccountProvider.select((a) => a?.uid));
+  final expenses = ref.watch(trustedExpensesProvider)?.expenses;
+  final movements = ref.watch(movementsProvider).value;
+  final settings = ref.watch(walletSettingsProvider).value;
+  if (uid == null || expenses == null || movements == null || settings == null) return const [];
+  return findSplitPaymentMatches(
+    expenses: expenses,
+    movements: movements,
+    myUid: uid,
+    dismissed: settings.dismissedSplitMatchIds,
+  );
+});
+
 /// Mantiene en la wallet tu parte de cada gasto compartido. Mismo patrón que
 /// [chargeMovementSyncProvider]: conciliación idempotente, sin cuenta no hace nada.
 final splitMovementSyncProvider = Provider<void>((ref) {
