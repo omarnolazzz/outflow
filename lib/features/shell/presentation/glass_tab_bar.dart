@@ -10,8 +10,8 @@ import '../../../core/widgets/glass.dart';
 /// Pestañas de la app.
 enum AppTab {
   home('Inicio', LucideIcons.house),
-  movements('Movimientos', LucideIcons.arrowLeftRight),
-  subscriptions('Suscripciones', LucideIcons.calendarSync),
+  movements('Historial', LucideIcons.arrowLeftRight),
+  subscriptions('Cobros', LucideIcons.calendarSync),
   friends('Amigos', LucideIcons.users),
   summary('Resumen', LucideIcons.chartPie);
 
@@ -117,7 +117,7 @@ class _TabItem extends StatelessWidget {
             AnimatedDefaultTextStyle(
               duration: AppMotion.short,
               style: TextStyle(
-                fontSize: 10.5,
+                fontSize: 11,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                 color: color,
                 letterSpacing: -0.1,

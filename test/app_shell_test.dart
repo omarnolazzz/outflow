@@ -37,7 +37,7 @@ void main() {
     await tester.pump();
     expect(find.text('home 1'), findsOneWidget);
 
-    await tester.tap(find.text('Movimientos'));
+    await tester.tap(find.text('Historial'));
     await tester.pumpAndSettle();
     expect(find.text('movements 0'), findsOneWidget);
     expect(find.text('home 1'), findsNothing);
@@ -53,7 +53,7 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(app());
     await tester.pumpAndSettle();
-    for (final label in ['Inicio', 'Movimientos', 'Suscripciones', 'Amigos', 'Resumen']) {
+    for (final label in ['Inicio', 'Historial', 'Cobros', 'Amigos', 'Resumen']) {
       expect(find.text(label), findsOneWidget);
     }
     expect(AppTab.values.length, 5);

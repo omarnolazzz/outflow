@@ -14,15 +14,15 @@ bool get useLiquidGlass => !kIsWeb && defaultTargetPlatform == TargetPlatform.iO
 final kBarLiquidSettings = LiquidGlassSettings.ios27Regular(brightness: Brightness.light);
 
 /// Agrupa las piezas de [BarGlass] para que compartan una sola muestra del
-/// fondo (lo caro) y se fundan como gotas al acercarse.
+/// fondo (lo caro). Sin fusión entre piezas: la barra y el "+" están tan
+/// cerca que se unían con un puente de cristal que parecía un reflejo raro.
 class BarGlassLayer extends StatelessWidget {
   const BarGlassLayer({super.key, required this.child});
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => useLiquidGlass
-      ? LiquidGlassLayer(settings: kBarLiquidSettings, child: LiquidGlassBlendGroup(child: child))
-      : child;
+  Widget build(BuildContext context) =>
+      useLiquidGlass ? LiquidGlassLayer(settings: kBarLiquidSettings, child: child) : child;
 }
 
 /// Superficie de la barra flotante: Liquid Glass en iPhone, [Glass] en otros.

@@ -53,7 +53,7 @@ void fireWrite(BuildContext context, Future<void> write, {String message = 'No s
   });
 }
 
-/// Círculo con la inicial de una persona.
+/// Foto de Google de una persona (o su inicial si no hay foto o no carga).
 class PersonAvatar extends StatelessWidget {
   const PersonAvatar(this.person, {super.key, this.size = 40});
 
@@ -63,7 +63,7 @@ class PersonAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = person.name.trim().isEmpty ? person.email : person.name.trim();
-    return Container(
+    final initial = Container(
       width: size,
       height: size,
       alignment: Alignment.center,
@@ -71,6 +71,18 @@ class PersonAvatar extends StatelessWidget {
       child: Text(
         name.isEmpty ? '?' : name[0].toUpperCase(),
         style: TextStyle(fontSize: size * 0.42, fontWeight: FontWeight.w600, color: AppColors.accent),
+      ),
+    );
+    final url = person.photoUrl;
+    if (url == null || url.isEmpty) return initial;
+    return ClipOval(
+      child: Image.network(
+        url,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => initial,
+        frameBuilder: (_, child, frame, sync) => sync || frame != null ? child : initial,
       ),
     );
   }

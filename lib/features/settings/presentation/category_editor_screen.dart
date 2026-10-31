@@ -37,6 +37,7 @@ class _CategoryEditorScreenState extends ConsumerState<CategoryEditorScreen> {
 
   Future<void> _edit(Category? c) async {
     final result = await showModalBottomSheet<Category>(
+        useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       builder: (_) => _CategorySheet(category: c, kind: _kind),

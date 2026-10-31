@@ -122,14 +122,14 @@ class _AppShellState extends State<AppShell> {
                 ),
               ),
               Positioned(
-                left: 16,
-                right: 16,
+                left: 12,
+                right: 12,
                 bottom: barBottom,
                 child: BarGlassLayer(
                   child: Row(
                     children: [
                       Expanded(child: GlassTabBar(current: _tab, onSelect: _select)),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       QuickAddButton(open: _menu, onTap: () => setState(() => _menu = !_menu)),
                     ],
                   ),

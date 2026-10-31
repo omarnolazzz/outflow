@@ -174,6 +174,7 @@ Future<void> showExpenseActions(
   String settleLabel(String d) =>
       debtors.length == 1 ? 'Marcar como pagado' : 'Marcar como pagado · ${e.people[d]?.shortName ?? 'Amigo'}';
   final action = await showModalBottomSheet<String>(
+        useRootNavigator: true,
     context: context,
     backgroundColor: AppColors.surface,
     builder: (ctx) => SafeArea(

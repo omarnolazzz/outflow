@@ -51,6 +51,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _pickCurrency(String current) async {
     final picked = await showModalBottomSheet<String>(
+        useRootNavigator: true,
       context: context,
       builder: (context) => SafeArea(
         child: ListView(
