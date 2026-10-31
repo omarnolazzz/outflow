@@ -43,6 +43,10 @@ abstract interface class SocialRepository {
 
   /// Marca como pagada la parte de [debtorUid] (solo toca `settled.<uid>`).
   Future<void> settle(String expenseId, String debtorUid);
+
+  /// "Empezar de cero": borra tus solicitudes y amistades y los gastos
+  /// compartidos que creaste. Los gastos que crearon otros siguen en su app.
+  Future<void> forgetMe();
 }
 
 /// Sin Firebase (vista previa web, build sin configuración o cuenta simulada):
@@ -88,4 +92,8 @@ class UnavailableSocialRepository implements SocialRepository {
 
   @override
   Future<void> settle(String expenseId, String debtorUid) async => _unavailable();
+
+  /// Sin cuenta compartida no hay nada que borrar fuera del teléfono.
+  @override
+  Future<void> forgetMe() async {}
 }

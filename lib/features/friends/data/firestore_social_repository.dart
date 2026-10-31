@@ -242,6 +242,22 @@ class FirestoreSocialRepository implements SocialRepository {
       'updatedAt': at,
     });
   }
+
+  /// Consultas que las reglas aceptan: solicitudes por `from`/`to` y gastos
+  /// por `participants`; los que creaste se filtran aquí.
+  @override
+  Future<void> forgetMe() async {
+    for (final field in const ['from', 'to']) {
+      final requests = await _requests.where(field, isEqualTo: _myUid).get();
+      for (final d in requests.docs) {
+        _fire(d.reference.delete());
+      }
+    }
+    final mine = await _expenses.where('participants', arrayContains: _myUid).get();
+    for (final d in mine.docs) {
+      if (d.data()['createdBy'] == _myUid) _fire(d.reference.delete());
+    }
+  }
 }
 
 /// Emite `combine(a, b)` cada vez que cambia cualquiera, cuando ambos ya emitieron.

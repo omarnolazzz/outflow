@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
@@ -21,6 +22,16 @@ class LocalStore {
   static const _keyName = 'outflow.hive.key';
 
   final Map<String, Box<String>> _boxes;
+
+  /// Cajas sin cifrar en [Hive.init] (tests).
+  @visibleForTesting
+  static Future<LocalStore> openUnencrypted() async {
+    final boxes = <String, Box<String>>{};
+    for (final name in const [subscriptionsBox, merchantsBox, settingsBox, movementsBox, categoriesBox]) {
+      boxes[name] = await Hive.openBox<String>(name);
+    }
+    return LocalStore._(boxes);
+  }
 
   static Future<LocalStore> open(FlutterSecureStorage secure) async {
     await Hive.initFlutter('outflow');
@@ -61,6 +72,13 @@ class LocalStore {
       _box(box).putAll({for (final e in docs.entries) e.key: jsonEncode(e.value)});
 
   Future<void> removeAll(String box, Iterable<String> ids) => _box(box).deleteAll(ids);
+
+  /// Vacía todas las cajas (la clave de cifrado se conserva).
+  Future<void> clearAll() async {
+    for (final box in _boxes.values) {
+      await box.clear();
+    }
+  }
 
   /// Emite el contenido actual y lo re-emite en cada cambio de la caja.
   Stream<List<Map<String, Object?>>> watchAll(String box) async* {

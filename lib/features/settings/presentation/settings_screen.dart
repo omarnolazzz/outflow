@@ -96,6 +96,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await ref.read(sessionControllerProvider.notifier).signOut();
   }
 
+  Future<void> _eraseEverything() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('¿Borrar toda la información?'),
+        content: const Text(
+          'Se borran tus gastos, ingresos, suscripciones, categorías propias y ajustes de este teléfono, '
+          'y tus amistades y los gastos compartidos que creaste. Volverás a la configuración inicial con '
+          'tu misma cuenta de Google.\n\nNo se puede deshacer.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Borrar todo', style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    HapticFeedback.heavyImpact();
+    Navigator.of(context).popUntil((r) => r.isFirst);
+    await ref.read(sessionControllerProvider.notifier).eraseEverything();
+  }
+
   Future<void> _saveRule(NotificationRule previous, NotificationRule rule) async {
     await ref.read(notificationSettingsRepositoryProvider).saveGlobalRule(rule);
     if (rule.enabled && !previous.enabled) await ref.read(requestNotificationPermissionProvider)();
@@ -206,6 +231,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           )),
           const SizedBox(height: 24),
+          if (account != null)
+            e(Center(
+              child: Pressable(
+                onTap: _eraseEverything,
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  child: Text(
+                    'Borrar toda la información',
+                    style: AppType.callout.copyWith(color: AppColors.danger),
+                  ),
+                ),
+              ),
+            )),
           if (account != null)
             e(Center(
               child: Pressable(

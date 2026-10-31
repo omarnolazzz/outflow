@@ -1,7 +1,14 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/core_providers.dart';
 import '../../../core/storage/local_store.dart';
+import '../../friends/presentation/friends_providers.dart';
+import '../../notifications/data/charge_answer_inbox.dart';
+import '../../wallet/domain/default_categories.dart';
+import '../../wallet/domain/wallet_settings.dart';
 import '../../wallet/presentation/wallet_providers.dart';
 import '../data/auth_providers.dart';
 import '../data/preview_auth_service.dart';
@@ -167,6 +174,33 @@ class SessionController extends Notifier<SessionState> {
   Future<void> finishOnboarding() async {
     final s = state;
     if (s is NeedsOnboarding) state = _after(s.account, lock: false);
+  }
+
+  /// "Borrar toda la información": deja la cuenta como recién creada. Vacía
+  /// el teléfono (gastos, suscripciones, categorías propias, ajustes), borra
+  /// lo compartido que es tuyo en la nube y vuelve a la configuración inicial
+  /// con la misma cuenta de Google.
+  Future<void> eraseEverything() async {
+    final account = switch (state) {
+      Ready(:final account) || Locked(:final account) || NeedsOnboarding(:final account) => account,
+      _ => null,
+    };
+    if (account == null) return;
+    // Lo de la nube no espera al servidor: sin red se completa al volver.
+    unawaited(ref.read(socialRepositoryProvider).forgetMe().catchError((Object e) {
+      debugPrint('No se pudo borrar lo compartido: $e');
+    }));
+    final store = ref.read(localStoreProvider);
+    await store.clearAll();
+    await store.writeAll(LocalStore.categoriesBox, {for (final c in defaultCategories()) c.id: c.toJson()});
+    final settings = ref.read(walletSettingsRepositoryProvider);
+    await settings.save(WalletSettings(ownerUid: account.uid));
+    try {
+      await const ChargeAnswerInbox().drain();
+    } catch (_) {
+      // Sin respuestas pendientes que descartar.
+    }
+    state = NeedsOnboarding(account, short: false);
   }
 
   Future<void> signOut() async {

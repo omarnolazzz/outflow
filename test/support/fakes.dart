@@ -199,4 +199,9 @@ class MemorySocial implements SocialRepository {
     expenses[i] = e.copyWith(settled: {...e.settled, debtorUid: Settlement(by: debtorUid, at: DateTime(2026, 10, 20))});
     _expenses.add(_snapshot);
   }
+
+  int forgetCalls = 0;
+
+  @override
+  Future<void> forgetMe() async => forgetCalls++;
 }
