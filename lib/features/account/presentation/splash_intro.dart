@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import '../../../core/motion/app_motion.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/widgets/orbit_ring.dart';
 import '../../../core/widgets/outflow_mark.dart';
 
-/// Intro de arranque: la marca aparece y se traza, "Outflow" sube letra a
-/// letra con una línea que barre debajo, y al final la marca viaja hasta su
-/// sitio en la pantalla de bloqueo ([target]) mientras el resto se desvanece.
+/// Intro de arranque: la marca aparece con un rebote y se traza, un punto la
+/// rodea dejando una estela punteada, "Outflow" y su lema suben debajo, y al
+/// final la marca viaja hasta su sitio en la pantalla de entrada ([target])
+/// mientras el resto se desvanece.
 ///
 /// Se detiene antes del viaje hasta que [ready] (el destino ya existe).
 class SplashIntro extends StatefulWidget {
@@ -19,7 +21,7 @@ class SplashIntro extends StatefulWidget {
     required this.onDone,
   });
 
-  /// Marca de la pantalla de bloqueo: destino del viaje.
+  /// Marca de la pantalla de entrada: destino del viaje.
   final GlobalKey target;
   final bool ready;
 
@@ -31,17 +33,17 @@ class SplashIntro extends StatefulWidget {
   State<SplashIntro> createState() => _SplashIntroState();
 }
 
-const _word = 'Outflow';
 const _size = 72.0;
+const _orbit = 150.0;
 
 /// Tiempos en ms sobre la línea de tiempo total.
-const _total = 1850.0;
-const _hold = 1250.0;
+const _total = 2050.0;
+const _hold = 1450.0;
 
 class _SplashIntroState extends State<SplashIntro> with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1850),
+    duration: const Duration(milliseconds: 2050),
   );
   final _markKey = GlobalKey();
   Offset _delta = Offset.zero;
@@ -63,8 +65,8 @@ class _SplashIntroState extends State<SplashIntro> with SingleTickerProviderStat
   }
 
   void _onTick() {
-    // Con la marca casi en su sitio, para que el título no entre debajo de ella.
-    if (!_revealed && _c.value >= 1550 / _total) {
+    // Con la marca a medio camino, para que el contenido entre detrás de ella.
+    if (!_revealed && _c.value >= 1700 / _total) {
       _revealed = true;
       widget.onReveal();
     }
@@ -115,18 +117,38 @@ class _SplashIntroState extends State<SplashIntro> with SingleTickerProviderStat
 
   Widget _frame() {
     final travel = _seg(_hold, _total, Curves.easeInOutCubic);
-    final fadeOut = 1 - _seg(_hold, 1550);
+    final fadeOut = 1 - _seg(_hold, _hold + 300);
     final appear = _seg(0, 520, Curves.easeOutBack);
     final markScale = (0.6 + 0.4 * appear) * (1 + (_targetScale - 1) * travel);
 
-    final mark = Transform.translate(
-      offset: _delta * travel,
-      child: Transform.scale(
-        scale: markScale,
-        child: Opacity(
-          opacity: _seg(0, 250),
-          child: OutflowMark(key: _markKey, size: _size, draw: _seg(220, 720, Curves.easeInOutCubic)),
-        ),
+    // El punto da una vuelta y cuarto frenando; la estela lo sigue.
+    final orbit = _seg(320, 1350, Curves.easeOutCubic);
+
+    final mark = SizedBox.square(
+      dimension: _orbit,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Opacity(
+            opacity: fadeOut,
+            child: OrbitRing(
+              size: _orbit,
+              angle: 0.2 + 1.25 * orbit,
+              trail: 0.92 * orbit,
+              opacity: _seg(300, 450),
+            ),
+          ),
+          Transform.translate(
+            offset: _delta * travel,
+            child: Transform.scale(
+              scale: markScale,
+              child: Opacity(
+                opacity: _seg(0, 250),
+                child: OutflowMark(key: _markKey, size: _size, draw: _seg(220, 720, Curves.easeInOutCubic)),
+              ),
+            ),
+          ),
+        ],
       ),
     );
 
@@ -138,35 +160,24 @@ class _SplashIntroState extends State<SplashIntro> with SingleTickerProviderStat
             mainAxisSize: MainAxisSize.min,
             children: [
               mark,
-              const SizedBox(height: 20),
-              Transform.translate(
-                offset: Offset(0, -8 * (1 - fadeOut)),
-                child: Opacity(
-                  opacity: fadeOut,
-                  child: Column(
-                    children: [
-                      IntrinsicWidth(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                for (var i = 0; i < _word.length; i++) _letter(i),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            _sweep(),
-                          ],
-                        ),
+              const SizedBox(height: 8),
+              Opacity(
+                opacity: fadeOut,
+                child: Column(
+                  children: [
+                    _rise(
+                      _seg(760, 1160),
+                      Text('Outflow', style: AppType.title1.copyWith(fontSize: 30, letterSpacing: -0.4)),
+                    ),
+                    const SizedBox(height: 6),
+                    _rise(
+                      _seg(940, 1300),
+                      Text(
+                        'Tu wallet, bajo control',
+                        style: AppType.subhead.copyWith(color: AppColors.inkSecondary),
                       ),
-                      const SizedBox(height: 10),
-                      Opacity(
-                        opacity: _seg(900, 1200),
-                        child: Text('Tu wallet, bajo control', style: AppType.caption),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -176,52 +187,9 @@ class _SplashIntroState extends State<SplashIntro> with SingleTickerProviderStat
     );
   }
 
-  /// Cada letra sube y aparece, escalonada.
-  Widget _letter(int i) {
-    final start = 420.0 + 50 * i;
-    final t = _seg(start, start + 420);
-    return Transform.translate(
-      offset: Offset(0, 14 * (1 - t)),
-      child: Opacity(
-        opacity: t,
-        child: Text(
-          _word[i],
-          style: AppType.title1.copyWith(fontSize: 30, letterSpacing: 0),
-        ),
-      ),
-    );
-  }
-
-  /// Trazo fino que recorre el nombre de izquierda a derecha: la cabeza avanza
-  /// y la cola la sigue, como una luz que pasa.
-  Widget _sweep() {
-    final head = _seg(760, 1040);
-    final tail = _seg(900, 1180);
-    return CustomPaint(
-      painter: _SweepPainter(tail, head),
-      child: const SizedBox(height: 1.5),
-    );
-  }
-}
-
-class _SweepPainter extends CustomPainter {
-  _SweepPainter(this.from, this.to);
-  final double from;
-  final double to;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (to <= from) return;
-    canvas.drawLine(
-      Offset(size.width * from, size.height / 2),
-      Offset(size.width * to, size.height / 2),
-      Paint()
-        ..color = AppColors.ink
-        ..strokeWidth = size.height
-        ..strokeCap = StrokeCap.round,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_SweepPainter old) => old.from != from || old.to != to;
+  /// Sube unos píxeles mientras aparece.
+  static Widget _rise(double t, Widget child) => Transform.translate(
+        offset: Offset(0, 12 * (1 - t)),
+        child: Opacity(opacity: t, child: child),
+      );
 }
