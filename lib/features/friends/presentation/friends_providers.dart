@@ -18,7 +18,7 @@ final socialRepositoryProvider = Provider<SocialRepository>((ref) {
   final uid = ref.watch(currentAccountProvider.select((a) => a?.uid));
   final auth = ref.watch(authServiceProvider);
   final account = ref.read(currentAccountProvider);
-  if (kIsWeb || !FirebaseConfig.isConfigured || !auth.verifiesIdentity || uid == null || account == null) {
+  if (kIsWeb || !FirebaseConfig.usable || !auth.verifiesIdentity || uid == null || account == null) {
     return const UnavailableSocialRepository();
   }
   return FirestoreSocialRepository(FirebaseFirestore.instance, account);

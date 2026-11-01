@@ -24,6 +24,13 @@ abstract final class FirebaseConfig {
 
   static bool get _android => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
+  /// `Firebase.initializeApp` terminó bien al arrancar. Si falló (sin Google
+  /// Play Services, red rota en el arranque…), la app sigue en modo local.
+  static bool initialized = false;
+
+  /// Configurado y arrancado: se puede usar la cuenta de Google y Firestore.
+  static bool get usable => isConfigured && initialized;
+
   static bool get isConfigured {
     final common = senderId.isNotEmpty && projectId.isNotEmpty;
     if (_android) return common && androidApiKey.isNotEmpty && androidAppId.isNotEmpty && webClientId.isNotEmpty;

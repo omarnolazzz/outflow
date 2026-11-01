@@ -33,11 +33,43 @@ class LocalStore {
     return LocalStore._(boxes);
   }
 
+  static const _names = [subscriptionsBox, merchantsBox, settingsBox, movementsBox, categoriesBox];
+
   static Future<LocalStore> open(FlutterSecureStorage secure) async {
     await Hive.initFlutter('outflow');
-    final cipher = HiveAesCipher(await _encryptionKey(secure));
+    return openWith(secure);
+  }
+
+  /// Abre las cajas cifradas. Si la clave no se puede leer (p. ej. Samsung
+  /// restauró una copia de una instalación anterior cuya clave del Keystore
+  /// ya no existe) o las cajas no se descifran, esos datos son irrecuperables:
+  /// se empieza de cero con una clave nueva en vez de dejar la app colgada.
+  @visibleForTesting
+  static Future<LocalStore> openWith(FlutterSecureStorage secure) async {
+    try {
+      return await _openEncrypted(await _encryptionKey(secure));
+    } catch (e) {
+      debugPrint('Almacén local ilegible, se empieza de cero: $e');
+      try {
+        await secure.deleteAll();
+      } catch (e) {
+        debugPrint('No se pudo limpiar el llavero: $e');
+      }
+      for (final name in _names) {
+        try {
+          await Hive.deleteBoxFromDisk(name);
+        } catch (_) {
+          // Caja que no existía o ya cerrada.
+        }
+      }
+      return _openEncrypted(await _encryptionKey(secure));
+    }
+  }
+
+  static Future<LocalStore> _openEncrypted(List<int> key) async {
+    final cipher = HiveAesCipher(key);
     final boxes = <String, Box<String>>{};
-    for (final name in const [subscriptionsBox, merchantsBox, settingsBox, movementsBox, categoriesBox]) {
+    for (final name in _names) {
       boxes[name] = await Hive.openBox<String>(name, encryptionCipher: cipher);
     }
     return LocalStore._(boxes);

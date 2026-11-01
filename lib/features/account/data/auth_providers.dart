@@ -11,7 +11,7 @@ import 'preview_auth_service.dart';
 /// Google real en el iPhone con Firebase configurado; cuenta simulada en la
 /// vista previa web o si la build no trae la configuración.
 final authServiceProvider = Provider<AuthService>((ref) {
-  if (kIsWeb || !FirebaseConfig.isConfigured) return PreviewAuthService(ref.watch(localStoreProvider));
+  if (kIsWeb || !FirebaseConfig.usable) return PreviewAuthService(ref.watch(localStoreProvider));
   return FirebaseAuthService();
 });
 
