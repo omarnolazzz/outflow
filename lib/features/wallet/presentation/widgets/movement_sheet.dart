@@ -19,6 +19,7 @@ import '../../../../core/widgets/primary_button.dart';
 import '../../../../core/widgets/segmented_control.dart';
 import '../../../../core/widgets/sheet_scaffold.dart';
 import '../../../../core/widgets/surface_card.dart';
+import '../../../capture/domain/process_captures.dart';
 import '../../../friends/presentation/friends_providers.dart';
 import '../../../friends/presentation/split_editor_screen.dart';
 import '../../../receipts/presentation/scan_receipt_flow.dart';
@@ -174,8 +175,40 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
             // Solo un importe cambiado a mano protege el cobro de los cambios de precio.
             userEdited: _isCharge && money != _e!.amount ? true : null,
             accountId: accountId,
+            // Quien lo corrige ya lo ha revisado.
+            needsReview: false,
           );
     await ref.read(walletActionsProvider).save(movement);
+    HapticFeedback.mediumImpact();
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  /// Las otras cuentas a las que este movimiento por revisar puede ser una
+  /// transferencia: entre monedas distintas no se sabe cuánto llegó.
+  List<WalletAccount> _transferTargets(List<WalletAccount> active) {
+    final m = _e;
+    if (m == null || !m.needsReview || _isCharge || _isSplit) return const [];
+    final ownId = m.accountId ?? defaultAccountOf(active)?.id;
+    return active.where((a) => a.id != ownId && a.currency == m.amount.currency).toList();
+  }
+
+  Future<void> _convertToTransfer(List<WalletAccount> active, List<WalletAccount> targets) async {
+    final m = _e!;
+    final ownId = m.accountId ?? defaultAccountOf(active)?.id;
+    final own = active.where((a) => a.id == ownId).firstOrNull;
+    if (own == null) return;
+    final other = await showDialog<WalletAccount>(
+      context: context,
+      useRootNavigator: true,
+      builder: (context) => SimpleDialog(
+        title: Text(m.kind == MovementKind.income ? '¿De qué cuenta vino?' : '¿A qué cuenta fue?'),
+        children: [
+          for (final a in targets) SimpleDialogOption(onPressed: () => Navigator.pop(context, a), child: Text(a.name)),
+        ],
+      ),
+    );
+    if (other == null) return;
+    await ref.read(walletActionsProvider).save(convertToTransfer(m, own: own, other: other));
     HapticFeedback.mediumImpact();
     if (mounted) Navigator.of(context).pop();
   }
@@ -355,6 +388,14 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
               onTap: _isSplit ? null : () => _pickDate(date),
             ),
           ),
+          if (_transferTargets(active) case final targets when targets.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            ListRow(
+              label: 'Transferencia',
+              value: 'Convertir',
+              onTap: () => _convertToTransfer(active, targets),
+            ),
+          ],
           if (showAccounts) ...[
             const SizedBox(height: 14),
             Entrance(

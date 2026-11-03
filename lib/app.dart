@@ -14,6 +14,7 @@ import 'features/account/domain/account.dart';
 import 'features/account/presentation/lock_screen.dart';
 import 'features/account/presentation/session_controller.dart';
 import 'features/account/presentation/welcome_screen.dart';
+import 'features/capture/presentation/capture_providers.dart';
 import 'features/notifications/data/charge_answer_inbox.dart';
 import 'features/merchants/presentation/screens/catalog_screen.dart';
 import 'features/onboarding/presentation/onboarding_flow.dart';
@@ -190,6 +191,9 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
     // Los cobros de suscripciones se reflejan como gastos de la wallet.
     ref.watch(chargeMovementSyncProvider);
     ref.watch(splitMovementSyncProvider);
+
+    // Lo que dejaron los avisos, correos y SMS bancarios en la bandeja.
+    ref.watch(captureSyncProvider);
 
     // Una cuenta de Google solo vive en un dispositivo: el último en entrar gana.
     ref.watch(deviceSessionGuardProvider);

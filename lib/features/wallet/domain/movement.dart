@@ -50,6 +50,7 @@ class Movement {
     this.paidMinor,
     this.needsReview = false,
     this.externalRef,
+    this.pairedCaptureId,
   });
 
   final String id;
@@ -100,6 +101,10 @@ class Movement {
   /// Referencia de la operación en el banco o la entidad de origen.
   final String? externalRef;
 
+  /// Id del evento de captura fundido con este movimiento: otro rastro del mismo
+  /// pago. Solo se absorbe uno, y así reprocesarlo no lo cuenta de nuevo.
+  final String? pairedCaptureId;
+
   bool get isExpense => kind == MovementKind.expense;
 
   /// Mueve dinero entre cuentas o corrige un saldo: ni gasto ni ingreso.
@@ -137,6 +142,7 @@ class Movement {
     int? paidMinor,
     bool? needsReview,
     String? externalRef,
+    String? pairedCaptureId,
   }) =>
       Movement(
         id: id,
@@ -159,6 +165,7 @@ class Movement {
         paidMinor: paidMinor ?? this.paidMinor,
         needsReview: needsReview ?? this.needsReview,
         externalRef: externalRef ?? this.externalRef,
+        pairedCaptureId: pairedCaptureId ?? this.pairedCaptureId,
       );
 
   Map<String, Object?> toJson() => {
@@ -182,6 +189,7 @@ class Movement {
         'paidMinor': paidMinor,
         'needsReview': needsReview,
         'externalRef': externalRef,
+        'pairedCaptureId': pairedCaptureId,
       };
 
   factory Movement.fromJson(Map<String, Object?> json) {
@@ -208,6 +216,7 @@ class Movement {
       paidMinor: (json['paidMinor'] as num?)?.toInt(),
       needsReview: json['needsReview'] as bool? ?? false,
       externalRef: json['externalRef'] as String?,
+      pairedCaptureId: json['pairedCaptureId'] as String?,
     );
   }
 }

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/core_providers.dart';
 import '../../../core/storage/local_store.dart';
+import '../../capture/data/capture_inbox.dart';
 import '../../friends/presentation/friends_providers.dart';
 import '../../notifications/data/charge_answer_inbox.dart';
 import '../../wallet/domain/default_categories.dart';
@@ -253,6 +254,11 @@ class SessionController extends Notifier<SessionState> {
       await const ChargeAnswerInbox().drain();
     } catch (_) {
       // Sin respuestas pendientes que descartar.
+    }
+    try {
+      await ref.read(captureInboxProvider).clear();
+    } catch (_) {
+      // Sin textos pendientes que descartar.
     }
     state = NeedsOnboarding(account, short: false);
   }

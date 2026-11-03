@@ -206,6 +206,17 @@ void main() {
     expect(find.textContaining('1,149'), findsNothing);
   });
 
+  testWidgets('Inicio avisa de lo que está por revisar, y sin nada no ocupa sitio', (tester) async {
+    await pump(tester, movements: [mv('b', MovementKind.expense, 12, DateTime(2026, 10, 5))]);
+    expect(find.textContaining('por revisar'), findsNothing);
+
+    await pump(tester, movements: [
+      mv('a', MovementKind.expense, 12, DateTime(2026, 10, 5)).copyWith(needsReview: true),
+      mv('b', MovementKind.expense, 13, DateTime(2026, 10, 6)).copyWith(needsReview: true),
+    ]);
+    expect(find.text('2 movimientos por revisar'), findsOneWidget);
+  });
+
   testWidgets('sin datos y a 360 px Inicio no desborda', (tester) async {
     await pump(tester, phone: true, accounts: [account('default', 'Mi cuenta', isDefault: true)]);
     expect(find.text('Saldo en cuentas'), findsOneWidget);

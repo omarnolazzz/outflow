@@ -6,6 +6,7 @@ import 'package:hive_ce/hive.dart';
 import 'package:outflow/core/di/core_providers.dart';
 import 'package:outflow/core/storage/local_store.dart';
 import 'package:outflow/features/account/presentation/session_controller.dart';
+import 'package:outflow/features/capture/data/capture_inbox.dart';
 import 'package:outflow/features/friends/presentation/friends_providers.dart';
 import 'package:outflow/features/wallet/domain/wallet_settings.dart';
 import 'package:outflow/features/wallet/presentation/wallet_providers.dart';
@@ -35,7 +36,10 @@ void main() {
     await store.write(LocalStore.accountsBox, 'bcp', {'id': 'bcp'});
     final settings = MemorySettings(const WalletSettings(onboardingDone: true, currency: 'USD', ownerUid: 'u1'));
     final social = MemorySocial();
+    final inbox = CaptureInbox(directory: () async => dir);
+    await inbox.add(CaptureEvent(sourceKey: 's', sourceLabel: 's', text: 'Pagaste S/ 5.00', receivedAt: DateTime(2026)));
     final c = ProviderContainer(overrides: [
+      captureInboxProvider.overrideWithValue(inbox),
       authServiceProvider.overrideWithValue(FakeAuth(current: gabriel)),
       biometricsProvider.overrideWithValue(FakeBiometrics()),
       walletSettingsRepositoryProvider.overrideWithValue(settings),
@@ -65,6 +69,7 @@ void main() {
     expect(account['initialMinor'], 0);
     expect(account['isDefault'], isTrue);
     expect(social.forgetCalls, 1);
+    expect(File('${dir.path}/capture_inbox.jsonl').existsSync(), isFalse, reason: 'tampoco quedan textos por procesar');
     final s = c.read(sessionControllerProvider);
     expect(s, isA<NeedsOnboarding>());
     expect((s as NeedsOnboarding).short, isFalse);

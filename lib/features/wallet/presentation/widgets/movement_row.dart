@@ -53,7 +53,7 @@ class MovementRow extends StatelessWidget {
     return Pressable(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
-      semanticLabel: '$title, $amount',
+      semanticLabel: m.needsReview ? '$title, $amount, por revisar' : '$title, $amount',
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
@@ -70,8 +70,21 @@ class MovementRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(title, style: AppType.headline.copyWith(fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  if (subtitle.isNotEmpty)
-                    Text(subtitle, style: AppType.footnote, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  if (subtitle.isNotEmpty || m.needsReview)
+                    Text.rich(
+                      TextSpan(children: [
+                        // Delante: una categoría larga no puede ocultarlo.
+                        if (m.needsReview)
+                          TextSpan(
+                            text: subtitle.isEmpty ? 'por revisar' : 'por revisar · ',
+                            style: const TextStyle(color: AppColors.accent, fontWeight: FontWeight.w600),
+                          ),
+                        TextSpan(text: subtitle),
+                      ]),
+                      style: AppType.footnote,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                 ],
               ),
             ),

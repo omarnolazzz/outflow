@@ -61,6 +61,15 @@ const _currencyTokens = <String, String>{
 /// Monedas que se escriben con "$".
 const _dollarSign = {'USD', 'MXN', 'CLP', 'COP', 'ARS'};
 
+/// Moneda de un símbolo o código ("S/", "USD"); null si no se reconoce. Un "$"
+/// suelto sigue el idioma del iPhone: es [fallback] si esta también usa "$"
+/// (peso mexicano, chileno…); si no, dólares.
+String? currencyOfToken(String token, {required String fallback}) {
+  final upper = token.toUpperCase();
+  if (upper == r'$' && _dollarSign.contains(fallback)) return fallback;
+  return _currencyTokens[upper];
+}
+
 /// `outflow://gasto?importe=…&comercio=…&tarjeta=…` (automatización
 /// "Transacción" de Atajos) → borrador de gasto. null si es otro enlace.
 MovementDraft? parseApplePayLink(
@@ -76,10 +85,7 @@ MovementDraft? parseApplePayLink(
   String? currency;
   for (final e in _currencyTokens.entries) {
     if (raw.toUpperCase().contains(e.key)) {
-      currency = e.value;
-      // Un "$" suelto sigue el idioma del iPhone: es la moneda principal si
-      // esta también usa "$" (peso mexicano, chileno…); si no, dólares.
-      if (e.key == r'$' && _dollarSign.contains(fallbackCurrency)) currency = fallbackCurrency;
+      currency = currencyOfToken(e.key, fallback: fallbackCurrency);
       break;
     }
   }
@@ -111,8 +117,9 @@ int? parseAmountMinor(String text) {
     if (sep != null) {
       final count = sep.allMatches(s).length;
       final after = s.length - s.lastIndexOf(sep) - 1;
-      // Un único separador seguido de 1–2 cifras es decimal; con 3 son miles.
-      if (count == 1 && after > 0 && after <= 2) decimalAt = s.lastIndexOf(sep);
+      // Un único separador es decimal salvo con 3 cifras, que son miles. Con 4 o
+      // más tampoco pueden ser miles: "S/ 4.0000" (Lemon) son S/ 4.00.
+      if (count == 1 && after > 0 && after != 3) decimalAt = s.lastIndexOf(sep);
     }
   }
 
