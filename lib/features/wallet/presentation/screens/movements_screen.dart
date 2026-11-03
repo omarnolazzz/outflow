@@ -231,8 +231,10 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
 
   /// Neto del día en la moneda del primer movimiento (solo informativo).
   String _dayTotal(List<Movement> items) {
-    final currency = items.first.amount.currency;
-    final net = items.where((m) => m.amount.currency == currency).fold<int>(0, (s, m) => s + m.signedMinor);
+    final counted = items.where((m) => m.countsInWallet).toList();
+    if (counted.isEmpty) return '';
+    final currency = counted.first.amount.currency;
+    final net = counted.where((m) => m.amount.currency == currency).fold<int>(0, (s, m) => s + m.signedMinor);
     final money = Fmt.money(Money(net.abs(), currency));
     return net < 0 ? '−$money' : '+$money';
   }

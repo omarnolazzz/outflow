@@ -49,6 +49,10 @@ class Movement {
 
   bool get isExpense => kind == MovementKind.expense;
 
+  /// Los cobros de suscripción son informativos: se ven en el historial, pero
+  /// el usuario los paga por su cuenta, así que no descuentan de la wallet.
+  bool get countsInWallet => origin != MovementOrigin.subscription;
+
   /// Importe con signo en unidades menores (gastos negativos).
   int get signedMinor => isExpense ? -amount.minor : amount.minor;
 

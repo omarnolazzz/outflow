@@ -99,9 +99,11 @@ Hoy solo tu parte cuenta (decisión B) y eso **se mantiene** para gastos, catego
   porque no sabemos dónde recibiste el dinero; lo marca tu captura automática o un ajuste.
 
 ### Suscripciones
-Cada suscripción puede tener cuenta de cobro (por defecto, la cuenta por defecto). Los
-cobros **previstos** no mueven el saldo real hasta que se confirman o llega su fecha,
-igual que hoy para "Te queda". *Decisión de Claude.*
+**Decisión del usuario (2026-11-03, ya aplicada):** los cobros de suscripción se siguen
+viendo en Historial, avisos y próximos cobros, pero **no descuentan de la wallet**, porque
+los paga a mano y se contarían dos veces (`Movement.countsInWallet`). Tampoco mueven ninguna
+cuenta, así que las suscripciones no tienen cuenta de cobro. Cuando pague de verdad, el gasto
+entra por la captura automática o a mano como cualquier otro.
 
 ## Captura automática
 Principio: **se guarda solo y queda "por revisar"**, en vez de pedir confirmación

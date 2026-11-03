@@ -117,6 +117,7 @@ class MonthSummary {
     final byCategory = <String, int>{};
     final others = <String, int>{};
     for (final mv in movements) {
+      if (!mv.countsInWallet) continue;
       if (mv.amount.currency != currency) {
         others.update(mv.amount.currency, (v) => v - mv.signedMinor, ifAbsent: () => -mv.signedMinor);
         continue;

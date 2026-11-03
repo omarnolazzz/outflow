@@ -38,6 +38,7 @@ class MovementRow extends StatelessWidget {
       category?.name ?? '',
       if (showDate) Fmt.dateShort(m.date),
       if (m.provisional) 'previsto',
+      if (!m.countsInWallet) 'no descuenta',
     ].where((x) => x.isNotEmpty).join(' · ');
     final amount = '${m.isExpense ? '−' : '+'}${Fmt.money(m.amount)}';
 
@@ -67,7 +68,13 @@ class MovementRow extends StatelessWidget {
             const SizedBox(width: 8),
             Text(
               amount,
-              style: AppType.amount.copyWith(color: m.isExpense ? AppColors.ink : AppColors.income),
+              style: AppType.amount.copyWith(
+                color: !m.countsInWallet
+                    ? AppColors.inkTertiary
+                    : m.isExpense
+                        ? AppColors.ink
+                        : AppColors.income,
+              ),
             ),
           ],
         ),

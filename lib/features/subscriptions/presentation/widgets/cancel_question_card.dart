@@ -29,7 +29,7 @@ class CancelQuestionCard extends ConsumerWidget {
     messenger
       ?..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(
-        content: Text(wasCharged ? 'Guardado: el cobro cuenta como gasto.' : 'Quitado de tus gastos.'),
+        content: Text(wasCharged ? 'Guardado.' : 'Cobro quitado.'),
         action: SnackBarAction(
           label: 'Deshacer',
           onPressed: () {

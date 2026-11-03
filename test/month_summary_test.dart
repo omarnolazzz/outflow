@@ -122,6 +122,38 @@ void main() {
     expect(s.expense, const Money(12000, 'PEN'));
   });
 
+  test('los cobros de suscripción se ven pero no descuentan de la wallet', () {
+    final charge = Movement(
+      id: 'sub:netflix:2026-10-05',
+      kind: MovementKind.expense,
+      amount: const Money(2990, 'PEN'),
+      categoryId: 'subscriptions',
+      date: DateTime(2026, 10, 5),
+      createdAt: DateTime(2026, 10, 5),
+      origin: MovementOrigin.subscription,
+      subscriptionId: 'netflix',
+    );
+    final s = compute([inc(1000, DateTime(2026, 10, 2)), exp(100, DateTime(2026, 10, 3)), charge]);
+    expect(s.expense, const Money(10000, 'PEN'));
+    expect(s.remaining, const Money(90000, 'PEN'));
+    expect(s.expenseByCategory.containsKey('subscriptions'), isFalse);
+    expect(charge.countsInWallet, isFalse);
+    expect(exp(1, DateTime(2026, 10, 3)).countsInWallet, isTrue);
+  });
+
+  test('el sobrante del mes siguiente tampoco resta los cobros de suscripción', () {
+    final charge = Movement(
+      id: 'sub:netflix:2026-09-05',
+      kind: MovementKind.expense,
+      amount: const Money(2990, 'PEN'),
+      categoryId: 'subscriptions',
+      date: DateTime(2026, 9, 5),
+      createdAt: DateTime(2026, 9, 5),
+      origin: MovementOrigin.subscription,
+    );
+    expect(compute([inc(1000, DateTime(2026, 9, 2)), charge]).carriedIn, const Money(100000, 'PEN'));
+  });
+
   test('gasto por categoría', () {
     final s = compute([exp(300, DateTime(2026, 10, 2)), exp(100, DateTime(2026, 10, 3), cat: 'transport')]);
     expect(s.expenseByCategory, {'food': const Money(30000, 'PEN'), 'transport': const Money(10000, 'PEN')});

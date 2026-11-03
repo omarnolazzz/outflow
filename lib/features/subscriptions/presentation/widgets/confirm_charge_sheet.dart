@@ -69,7 +69,7 @@ Future<void> _applyResult(
       SnackBar(
         content: Text(
           result.wasCharged
-              ? 'Cancelada. El último cobro cuenta como gasto.'
+              ? 'Cancelada. El último cobro queda registrado.'
               : 'Cancelada a tiempo. Ya no recibirás avisos.',
         ),
         action: SnackBarAction(
@@ -376,7 +376,7 @@ class _CancelQuestion extends StatelessWidget {
               Entrance(
                 index: 1,
                 child: Text(
-                  'Así sabremos si el último cobro de $name cuenta como gasto.',
+                  'Así sabremos si el último cobro de $name se registra en tu historial.',
                   style: AppType.subhead,
                 ),
               ),
