@@ -20,6 +20,8 @@ import '../../../core/widgets/sheet_scaffold.dart';
 import '../../../core/widgets/status_pill.dart';
 import '../../../core/widgets/surface_card.dart';
 import '../../wallet/domain/category.dart';
+import '../../wallet/domain/wallet_account.dart';
+import '../../wallet/presentation/widgets/account_picker.dart';
 import '../../wallet/domain/expense_hints.dart';
 import '../../wallet/domain/movement.dart';
 import '../../wallet/domain/payment_match.dart';
@@ -50,6 +52,7 @@ class _ReceiptResultScreenState extends ConsumerState<ReceiptResultScreen> {
   late List<ReceiptItem> _items = List.of(widget.receipt.items);
   DateTime? _date;
   String? _categoryId;
+  String? _accountId;
   bool _editingTotal = false;
   bool _saving = false;
 
@@ -71,8 +74,17 @@ class _ReceiptResultScreenState extends ConsumerState<ReceiptResultScreen> {
     super.dispose();
   }
 
+  /// La cuenta a la que va el gasto; solo se elige con más de una. Con la moneda
+  /// del ticket ya fijada, solo entran las cuentas de esa moneda.
+  WalletAccount? _account() {
+    final active = ref.read(activeAccountsProvider);
+    final pickable = selectableAccounts(active, currency: widget.receipt.currency);
+    if (active.length < 2 || pickable.isEmpty) return null;
+    return resolveAccount(pickable, _accountId);
+  }
+
   String _currency() =>
-      widget.receipt.currency ?? ref.read(walletSettingsProvider).value?.currency ?? 'PEN';
+      widget.receipt.currency ?? _account()?.currency ?? ref.read(walletSettingsProvider).value?.currency ?? 'PEN';
 
   String _itemsNote(String currency) => [
         for (final i in _items)
@@ -184,6 +196,7 @@ class _ReceiptResultScreenState extends ConsumerState<ReceiptResultScreen> {
             note: note,
             origin: MovementOrigin.ticket,
             createdAt: now,
+            accountId: _account()?.id,
           );
     await ref.read(walletActionsProvider).save(movement);
     HapticFeedback.mediumImpact();
@@ -197,7 +210,9 @@ class _ReceiptResultScreenState extends ConsumerState<ReceiptResultScreen> {
   @override
   Widget build(BuildContext context) {
     final now = ref.watch(nowProvider);
+    ref.watch(activeAccountsProvider);
     final currency = _currency();
+    final account = _account();
     _movements = ref.watch(movementsProvider).value ?? const [];
     final all = ref.watch(categoriesProvider).value ?? const <Category>[];
     final options = all.where((c) => c.kind == MovementKind.expense && !c.reserved).toList();
@@ -328,6 +343,14 @@ class _ReceiptResultScreenState extends ConsumerState<ReceiptResultScreen> {
             leading: category == null ? null : CategoryBadge(category: category, size: 28),
             onTap: options.isEmpty ? null : () => _pickCategory(options, _categoryId),
           )),
+          if (account != null) ...[
+            const SizedBox(height: 14),
+            e(AccountPicker(
+              selectedId: account.id,
+              currency: widget.receipt.currency,
+              onChanged: (a) => setState(() => _accountId = a.id),
+            )),
+          ],
           if (_items.isNotEmpty) ...[
             e(const SectionHeader('Productos')),
             e(SurfaceCard(

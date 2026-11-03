@@ -19,6 +19,7 @@ import 'package:outflow/features/receipts/presentation/receipt_result_screen.dar
 import 'package:outflow/features/receipts/presentation/scan_receipt_flow.dart';
 import 'package:outflow/features/wallet/domain/default_categories.dart';
 import 'package:outflow/features/wallet/domain/movement.dart';
+import 'package:outflow/features/wallet/domain/wallet_account.dart';
 import 'package:outflow/features/wallet/domain/wallet_settings.dart';
 import 'package:outflow/features/wallet/presentation/wallet_providers.dart';
 
@@ -47,6 +48,7 @@ void main() {
     TextRecognizer? recognizer,
     ReceiptReader? reader,
     SocialRepository? social,
+    List<WalletAccount>? accounts,
   }) async {
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3;
@@ -57,6 +59,7 @@ void main() {
         nowProvider.overrideWithValue(now),
         movementRepositoryProvider.overrideWithValue(movements),
         walletSettingsRepositoryProvider.overrideWithValue(MemorySettings(const WalletSettings())),
+        if (accounts != null) accountRepositoryProvider.overrideWithValue(MemoryAccounts(accounts, movements)),
         categoriesProvider.overrideWith((ref) => Stream.value(defaultCategories())),
         imagePickerProvider.overrideWithValue(picker ?? (_) async => null),
         if (recognizer != null) textRecognizerProvider.overrideWithValue(recognizer),
@@ -188,6 +191,54 @@ void main() {
       expect(find.byType(SplitEditorScreen), findsNothing);
       expect(find.byType(ReceiptResultScreen), findsNothing);
       expect(social.expenses.single.totalMinor, 4590);
+    });
+  });
+
+  group('cuenta del ticket', () {
+    WalletAccount account(String id, String name, {bool isDefault = false, String currency = 'PEN'}) => WalletAccount(
+          id: id,
+          name: name,
+          type: AccountType.bank,
+          currency: currency,
+          initialMinor: 20000,
+          initialDate: kAccountBeginning,
+          isDefault: isDefault,
+        );
+
+    testWidgets('con varias cuentas empieza en la por defecto y guarda la elegida', (tester) async {
+      final movements = await pump(tester, accounts: [account('default', 'BCP', isDefault: true), account('bbva', 'BBVA')]);
+      expect(find.text('Cuenta'), findsOneWidget);
+      await tester.ensureVisible(find.text('BBVA'));
+      await tester.tap(find.text('BBVA'));
+      await tester.pump();
+      await tester.tap(find.text('Guardar gasto'));
+      await tester.pumpAndSettle();
+      expect(movements.saved.single.accountId, 'bbva');
+    });
+
+    testWidgets('sin tocar el selector guarda la cuenta por defecto', (tester) async {
+      final movements = await pump(tester, accounts: [account('default', 'BCP', isDefault: true), account('bbva', 'BBVA')]);
+      await tester.tap(find.text('Guardar gasto'));
+      await tester.pumpAndSettle();
+      expect(movements.saved.single.accountId, 'default');
+    });
+
+    testWidgets('con una sola cuenta no hay selector', (tester) async {
+      final movements = await pump(tester, accounts: [account('default', 'BCP', isDefault: true)]);
+      expect(find.text('Cuenta'), findsNothing);
+      await tester.tap(find.text('Guardar gasto'));
+      await tester.pumpAndSettle();
+      expect(movements.saved.single.accountId, isNull);
+    });
+
+    testWidgets('con la moneda del ticket fijada solo se ofrecen cuentas de esa moneda', (tester) async {
+      await pump(tester, accounts: [
+        account('default', 'BCP', isDefault: true),
+        account('bbva', 'BBVA'),
+        account('usd', 'Dólares', currency: 'USD'),
+      ]);
+      expect(find.text('Dólares'), findsNothing);
+      expect(find.text('BBVA'), findsOneWidget);
     });
   });
 

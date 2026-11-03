@@ -17,6 +17,7 @@ import '../../account/presentation/session_controller.dart';
 import '../../merchants/data/merchant_catalog.dart';
 import '../../merchants/presentation/widgets/merchant_avatar.dart';
 import '../../notifications/domain/notification_rule.dart';
+import '../../wallet/presentation/widgets/account_editor_sheet.dart' show kAccountNameSuggestions;
 import '../../notifications/presentation/notification_providers.dart';
 import '../../subscriptions/presentation/widgets/subscription_editor_sheet.dart';
 import '../../subscriptions/presentation/subscription_providers.dart';
@@ -24,7 +25,7 @@ import 'onboarding_controller.dart';
 
 Widget buildStep(OnboardingStep step, OnboardingController c) => switch (step) {
       OnboardingStep.currency => _CurrencyStep(c),
-      OnboardingStep.startingBalance => _StartingBalanceStep(c),
+      OnboardingStep.firstAccount => _FirstAccountStep(c),
       OnboardingStep.carryOver => _CarryOverStep(c),
       OnboardingStep.subscriptions => const _SubscriptionsStep(),
       OnboardingStep.notifications => const _NotificationsStep(),
@@ -101,59 +102,143 @@ class _CurrencyStep extends StatelessWidget {
   }
 }
 
-class _StartingBalanceStep extends StatefulWidget {
-  const _StartingBalanceStep(this.c);
+class _FirstAccountStep extends StatefulWidget {
+  const _FirstAccountStep(this.c);
   final OnboardingController c;
 
   @override
-  State<_StartingBalanceStep> createState() => _StartingBalanceStepState();
+  State<_FirstAccountStep> createState() => _FirstAccountStepState();
 }
 
-class _StartingBalanceStepState extends State<_StartingBalanceStep> {
+class _FirstAccountStepState extends State<_FirstAccountStep> with WidgetsBindingObserver {
   late final AmountInput _input = AmountInput()..setMinor(widget.c.startingBalanceMinor);
+  late final _name = TextEditingController(text: widget.c.accountName);
 
   @override
   void initState() {
     super.initState();
     _input.addListener(() => widget.c.setStartingBalance(_input.minor));
+    _name.addListener(() => widget.c.setAccountName(_name.text));
+    WidgetsBinding.instance.addObserver(this);
   }
+
+  /// Abrir o cerrar el teclado del sistema cambia lo que cabe.
+  @override
+  void didChangeMetrics() => setState(() {});
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _input.dispose();
+    _name.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const _StepHeader(
-              title: '¿Con cuánto empiezas este mes?',
-              subtitle: 'Lo que tienes disponible hoy. Se registra como tu saldo inicial.',
-            ),
-            const Spacer(),
-            Center(
-              child: ListenableBuilder(
-                listenable: _input,
-                builder: (context, _) => FittedBox(
-                  child: Text(
-                    _input.display(widget.c.currency),
-                    style: AppType.amountHero.copyWith(
-                      fontSize: 56,
-                      color: _input.isEmpty ? AppColors.inkTertiary : AppColors.ink,
+  Widget build(BuildContext context) {
+    // Con el teclado del sistema abierto no cabe también el numérico. Se lee de la
+    // vista: el Scaffold que contiene este paso ya descuenta el teclado de su MediaQuery.
+    final keyboardOpen = MediaQueryData.fromView(View.of(context)).viewInsets.bottom > 0;
+    // El teclado numérico queda abajo y fijo; lo demás se desplaza si no cabe.
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(top: 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _StepHeader(
+                    title: 'Tu primera cuenta',
+                    subtitle: 'Dónde guardas tu dinero y cuánto tienes hoy. Luego podrás añadir más cuentas.',
+                  ),
+                  const SizedBox(height: 16),
+                  Entrance(
+                    index: 2,
+                    child: SurfaceCard(
+                      radius: 18,
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 2),
+                      child: TextField(
+                        controller: _name,
+                        style: AppType.body,
+                        textCapitalization: TextCapitalization.words,
+                        inputFormatters: [LengthLimitingTextInputFormatter(30)],
+                        decoration: const InputDecoration(
+                          hintText: 'Nombre de la cuenta',
+                          filled: false,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(vertical: 14),
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(height: 10),
+                  Entrance(
+                    index: 3,
+                    child: SizedBox(
+                      height: 36,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: kAccountNameSuggestions.length,
+                        separatorBuilder: (_, _) => const SizedBox(width: 8),
+                        itemBuilder: (context, i) {
+                          final s = kAccountNameSuggestions[i];
+                          return Pressable(
+                            onTap: () => _name.text = s,
+                            highlight: false,
+                            scale: 0.95,
+                            borderRadius: BorderRadius.circular(18),
+                            semanticLabel: s,
+                            child: Container(
+                              alignment: Alignment.center,
+                              padding: const EdgeInsets.symmetric(horizontal: 14),
+                              decoration: ShapeDecoration(
+                                color: AppColors.surface,
+                                shape: RoundedSuperellipseBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                  side: const BorderSide(color: AppColors.separator),
+                                ),
+                              ),
+                              child: Text(
+                                s,
+                                style: AppType.subhead.copyWith(color: AppColors.ink, fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  Center(
+                    child: ListenableBuilder(
+                      listenable: _input,
+                      builder: (context, _) => FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          _input.display(widget.c.currency),
+                          style: AppType.amountHero.copyWith(
+                            fontSize: 56,
+                            color: _input.isEmpty ? AppColors.inkTertiary : AppColors.ink,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
               ),
             ),
-            const Spacer(),
-            Entrance(index: 2, offset: const Offset(0, 24), child: AmountKeypad(input: _input)),
-          ],
-        ),
-      );
+          ),
+          if (!keyboardOpen) Entrance(index: 4, offset: const Offset(0, 24), child: AmountKeypad(input: _input)),
+        ],
+      ),
+    );
+  }
 }
 
 class _CarryOverStep extends StatelessWidget {

@@ -26,6 +26,7 @@ import 'features/wallet/data/payment_listener.dart';
 import 'features/wallet/presentation/deep_link_provider.dart';
 import 'features/wallet/presentation/wallet_providers.dart';
 import 'features/wallet/presentation/widgets/movement_sheet.dart';
+import 'features/wallet/presentation/widgets/transfer_sheet.dart';
 import 'features/wallet/domain/movement.dart';
 import 'features/notifications/domain/charge_answer.dart';
 import 'features/notifications/presentation/notification_providers.dart';
@@ -120,6 +121,8 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
         showMovementSheet(nav.context);
       case QuickAction.income:
         showMovementSheet(nav.context, kind: MovementKind.income);
+      case QuickAction.transfer:
+        showTransferSheet(nav.context);
       case QuickAction.ticket:
         showScanReceipt(nav.context);
     }

@@ -12,6 +12,7 @@ import 'glass_tab_bar.dart';
 enum QuickAction {
   expense('Gasto', LucideIcons.arrowUpRight),
   income('Ingreso', LucideIcons.arrowDownLeft),
+  transfer('Transferencia', LucideIcons.arrowLeftRight),
   ticket('Escanear ticket', LucideIcons.scanLine),
   subscription('Suscripción', LucideIcons.repeat);
 

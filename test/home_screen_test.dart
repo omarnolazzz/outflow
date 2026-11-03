@@ -16,7 +16,9 @@ import 'package:outflow/features/subscriptions/domain/subscription_repository.da
 import 'package:outflow/features/subscriptions/presentation/subscription_providers.dart';
 import 'package:outflow/features/wallet/domain/default_categories.dart';
 import 'package:outflow/features/wallet/domain/movement.dart';
+import 'package:outflow/features/wallet/domain/wallet_account.dart';
 import 'package:outflow/features/wallet/domain/wallet_settings.dart';
+import 'package:outflow/features/wallet/presentation/screens/accounts_screen.dart';
 import 'package:outflow/features/wallet/presentation/wallet_providers.dart';
 
 import 'support/fakes.dart';
@@ -62,11 +64,22 @@ void main() {
     List<Movement> movements = const [],
     List<Subscription> subs = const [],
     MemorySocial? social,
+    List<WalletAccount>? accounts,
+    bool phone = false,
   }) async {
+    if (phone) {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+    }
     final actions = RecordingActions(_NoRepo());
     walletSettings = MemorySettings(WalletSettings(walletStartedAt: DateTime(2026, 10, 1)));
     final container = ProviderContainer(overrides: [
       if (social != null) socialRepositoryProvider.overrideWithValue(social),
+      if (accounts != null) ...[
+        accountRepositoryProvider.overrideWithValue(MemoryAccounts(accounts)),
+        walletSettingsRepositoryProvider.overrideWithValue(MemorySettings()),
+      ],
       subscriptionActionsProvider.overrideWithValue(actions),
       walletActionsProvider.overrideWithValue(WalletActions(MemoryMovements(movements), walletSettings)),
       nowProvider.overrideWithValue(now),
@@ -152,5 +165,50 @@ void main() {
     await pump(tester, social: MemorySocial(expenses: [dinner(settled: true)]));
     expect(find.textContaining('Te deben'), findsNothing);
     expect(find.textContaining('Debes'), findsNothing);
+  });
+
+  WalletAccount account(String id, String name, {int initial = 0, String currency = 'PEN', bool isDefault = false}) =>
+      WalletAccount(
+        id: id,
+        name: name,
+        type: AccountType.bank,
+        currency: currency,
+        initialMinor: initial,
+        initialDate: kAccountBeginning,
+        isDefault: isDefault,
+      );
+
+  testWidgets('Inicio muestra "Saldo en cuentas" con el total en la moneda principal y las otras aparte', (tester) async {
+    await pump(tester, accounts: [
+      account('default', 'BCP', initial: 15000, isDefault: true),
+      account('dale', 'Dale', initial: 2500),
+      account('usd', 'Dólares', initial: 12000, currency: 'USD'),
+    ]);
+    expect(find.text('Saldo en cuentas'), findsOneWidget);
+    expect(find.textContaining('175.00'), findsOneWidget, reason: '150 + 25 en soles');
+    expect(find.textContaining('120.00'), findsOneWidget);
+    expect(find.textContaining('en otras monedas'), findsWidgets);
+    expect(find.text('3 cuentas'), findsOneWidget);
+
+    await tester.tap(find.text('Saldo en cuentas'));
+    await tester.pumpAndSettle();
+    expect(find.text('Cuentas'), findsOneWidget);
+    expect(find.byType(AccountsScreen), findsOneWidget);
+  });
+
+  testWidgets('Inicio no cuenta las cuentas archivadas en el total', (tester) async {
+    await pump(tester, accounts: [
+      account('default', 'BCP', initial: 15000, isDefault: true),
+      account('old', 'Vieja', initial: 99900).copyWith(archived: true),
+    ]);
+    expect(find.textContaining('150.00'), findsOneWidget);
+    expect(find.text('1 cuenta'), findsOneWidget);
+    expect(find.textContaining('1,149'), findsNothing);
+  });
+
+  testWidgets('sin datos y a 360 px Inicio no desborda', (tester) async {
+    await pump(tester, phone: true, accounts: [account('default', 'Mi cuenta', isDefault: true)]);
+    expect(find.text('Saldo en cuentas'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

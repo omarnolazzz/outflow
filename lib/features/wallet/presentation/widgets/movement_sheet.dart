@@ -27,6 +27,7 @@ import '../../domain/category.dart';
 import '../../domain/expense_hints.dart';
 import '../../domain/movement.dart';
 import '../wallet_providers.dart';
+import 'account_picker.dart';
 import 'category_icon.dart';
 
 /// Abre la hoja para registrar (o editar) un gasto o ingreso.
@@ -59,6 +60,7 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
   late final _title = TextEditingController(text: widget.editing?.title ?? widget.draft?.title ?? '');
   late final _note = TextEditingController(text: widget.editing?.note ?? widget.draft?.note ?? '');
   String? _categoryId;
+  String? _accountId;
   DateTime? _date;
   bool _saving = false;
 
@@ -82,6 +84,7 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
     _amount.addListener(() => setState(() {}));
     _categoryId = _e?.categoryId ?? widget.draft?.categoryId;
     _date = _e?.date ?? widget.draft?.date;
+    _accountId = _e?.accountId;
   }
 
   @override
@@ -127,7 +130,7 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
   bool get _canSplit =>
       _e == null && _kind == MovementKind.expense && ref.read(socialRepositoryProvider).available;
 
-  Future<void> _save(String currency, String categoryId, DateTime date) async {
+  Future<void> _save(String currency, String categoryId, DateTime date, String? accountId) async {
     final now = ref.read(nowProvider);
     if (_split && _canSplit) {
       // En vez de guardar el gasto, se reparte: el editor lo guardará compartido.
@@ -159,6 +162,7 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
             note: _note.text.trim(),
             origin: widget.draft?.origin ?? MovementOrigin.manual,
             createdAt: now,
+            accountId: accountId,
           )
         : _e!.copyWith(
             kind: _isCharge || _isSplit ? null : _kind,
@@ -169,6 +173,7 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
             note: _note.text.trim(),
             // Solo un importe cambiado a mano protege el cobro de los cambios de precio.
             userEdited: _isCharge && money != _e!.amount ? true : null,
+            accountId: accountId,
           );
     await ref.read(walletActionsProvider).save(movement);
     HapticFeedback.mediumImpact();
@@ -210,6 +215,17 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
     final date = _date ?? now;
     final isExpense = _kind == MovementKind.expense;
 
+    // La cuenta solo se elige con más de una; un cobro de suscripción o tu parte
+    // de un gasto compartido no la cambian. Con moneda ya fijada (editar, borrador)
+    // solo se ofrecen las cuentas de esa moneda.
+    final fixedCurrency = _e?.amount.currency ?? widget.draft?.currency;
+    final active = ref.watch(activeAccountsProvider);
+    final pickable = selectableAccounts(active, currency: fixedCurrency);
+    final showAccounts = !_isCharge && !_isSplit && active.length > 1 && pickable.isNotEmpty;
+    final account = showAccounts ? resolveAccount(pickable, _accountId) : null;
+    // Sin fijar, el importe va en la moneda de la cuenta elegida.
+    final amountCurrency = fixedCurrency ?? account?.currency ?? currency;
+
     return SheetScaffold(
       title: _e == null ? (isExpense ? 'Nuevo gasto' : 'Nuevo ingreso') : 'Editar',
       closeIcon: true,
@@ -237,7 +253,9 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
           PrimaryButton(
             label: 'Guardar',
             loading: _saving,
-            onTap: _amount.minor > 0 && categoryId != null ? () => _save(currency, categoryId, date) : null,
+            onTap: _amount.minor > 0 && categoryId != null
+                ? () => _save(amountCurrency, categoryId, date, account?.id)
+                : null,
           ),
         ],
       ),
@@ -268,7 +286,7 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
                     fontSize: 52,
                     color: _amount.isEmpty ? AppColors.inkTertiary : (isExpense ? AppColors.ink : AppColors.income),
                   ),
-                  child: Text('${isExpense ? '' : '+'}${_amount.display(_e?.amount.currency ?? widget.draft?.currency ?? currency)}'),
+                  child: Text('${isExpense ? '' : '+'}${_amount.display(amountCurrency)}'),
                 ),
               ),
             ),
@@ -332,6 +350,18 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
               onTap: _isSplit ? null : () => _pickDate(date),
             ),
           ),
+          if (showAccounts) ...[
+            const SizedBox(height: 14),
+            Entrance(
+              index: 4,
+              child: AccountPicker(
+                selectedId: account?.id,
+                currency: fixedCurrency,
+                onChanged: (a) => setState(() => _accountId = a.id),
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
           const SizedBox(height: 8),
           Entrance(
             index: 4,

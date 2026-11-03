@@ -7,7 +7,11 @@ import 'package:outflow/features/account/presentation/session_controller.dart';
 import 'package:outflow/features/notifications/domain/notification_rule.dart';
 import 'package:outflow/features/notifications/presentation/notification_providers.dart';
 import 'package:outflow/features/settings/presentation/settings_screen.dart';
+import 'package:outflow/core/domain/money.dart';
 import 'package:outflow/features/wallet/domain/default_categories.dart';
+import 'package:outflow/features/wallet/domain/movement.dart';
+import 'package:outflow/features/wallet/domain/wallet_account.dart';
+import 'package:outflow/features/wallet/presentation/screens/accounts_screen.dart';
 import 'package:outflow/features/wallet/domain/wallet_settings.dart';
 import 'package:outflow/features/wallet/presentation/wallet_providers.dart';
 
@@ -40,18 +44,24 @@ class _Bio implements Biometrics {
 void main() {
   late _Auth auth;
   late MemorySettings settings;
+  late MemoryAccounts accounts;
+  late MemoryMovements movements;
 
-  Future<void> pump(WidgetTester tester) async {
+  Future<void> pump(WidgetTester tester, {List<Movement> existing = const []}) async {
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
     auth = _Auth();
+    movements = MemoryMovements(existing);
+    accounts = MemoryAccounts([newDefaultAccount('PEN')], movements);
     settings = MemorySettings(WalletSettings(onboardingDone: true, walletStartedAt: DateTime(2026, 10, 1)));
     await tester.pumpWidget(ProviderScope(
       overrides: [
         authServiceProvider.overrideWithValue(auth),
         biometricsProvider.overrideWithValue(_Bio()),
         walletSettingsRepositoryProvider.overrideWithValue(settings),
+        accountRepositoryProvider.overrideWithValue(accounts),
+        movementRepositoryProvider.overrideWithValue(movements),
         hasExistingDataProvider.overrideWithValue(false),
         clearLegacyPinProvider.overrideWithValue(() async {}),
         globalRuleProvider.overrideWith((ref) => Stream.value(NotificationRule.defaults)),
@@ -85,5 +95,59 @@ void main() {
     await tester.tap(find.text('Cerrar sesión').last);
     await tester.pumpAndSettle();
     expect(auth.signOuts, 1);
+  });
+
+  Future<void> pickCurrency(WidgetTester tester, String code) async {
+    await tester.tap(find.text('Moneda principal'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(code));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('la fila "Cuentas" abre la lista de cuentas', (tester) async {
+    await pump(tester);
+    await tester.tap(find.text('Cuentas'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AccountsScreen), findsOneWidget);
+  });
+
+  group('cambiar la moneda principal', () {
+    testWidgets('con la cuenta por defecto en otra moneda y sin movimientos, avisa y ofrece cambiarla', (tester) async {
+      await pump(tester);
+      await pickCurrency(tester, 'USD');
+      expect(settings.read().currency, 'USD');
+      expect(find.text('Tu cuenta sigue en PEN'), findsOneWidget);
+      await tester.tap(find.text('Cambiar a USD'));
+      await tester.pumpAndSettle();
+      expect(accounts.saved.single.currency, 'USD');
+      expect(accounts.saved.single.id, kDefaultAccountId);
+    });
+
+    testWidgets('con movimientos no la cambia: manda a crear una cuenta en la moneda nueva', (tester) async {
+      await pump(tester, existing: [
+        Movement(
+          id: 'm',
+          kind: MovementKind.income,
+          amount: const Money(1000, 'PEN'),
+          categoryId: 'salary',
+          date: DateTime(2026, 10, 5),
+          createdAt: DateTime(2026, 10, 5),
+        ),
+      ]);
+      await pickCurrency(tester, 'USD');
+      expect(find.text('Tu cuenta sigue en PEN'), findsOneWidget);
+      expect(find.text('Cambiar a USD'), findsNothing);
+      await tester.tap(find.text('Entendido'));
+      await tester.pumpAndSettle();
+      expect(accounts.saved.single.currency, 'PEN');
+    });
+
+    testWidgets('si la cuenta ya está en la moneda elegida no avisa', (tester) async {
+      await pump(tester);
+      await accounts.save(newDefaultAccount('USD'));
+      await pickCurrency(tester, 'USD');
+      expect(settings.read().currency, 'USD');
+      expect(find.textContaining('Tu cuenta sigue'), findsNothing);
+    });
   });
 }

@@ -28,6 +28,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     short: widget.state.short,
     settings: ref.read(walletSettingsRepositoryProvider),
     movements: ref.read(movementRepositoryProvider),
+    accounts: ref.read(accountRepositoryProvider),
   );
   bool _finishing = false;
 
@@ -78,7 +79,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
   /// Pasos que se pueden saltar con "Ahora no".
   static const _optional = {
-    OnboardingStep.startingBalance,
+    OnboardingStep.firstAccount,
     OnboardingStep.subscriptions,
     OnboardingStep.notifications,
     OnboardingStep.faceId,
@@ -147,7 +148,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
                           child: _optional.contains(step)
                               ? Pressable(
                                   onTap: () {
-                                    if (step == OnboardingStep.startingBalance) _c.setStartingBalance(0);
+                                    if (step == OnboardingStep.firstAccount) _c.setStartingBalance(0);
                                     if (step == OnboardingStep.faceId) _c.setFaceId(false);
                                     _c.next();
                                   },

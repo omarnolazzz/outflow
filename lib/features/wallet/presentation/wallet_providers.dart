@@ -184,3 +184,72 @@ final lastMonthsProvider = Provider.family<AsyncValue<List<MonthSummary>>, DateT
     now: ref.watch(nowProvider),
   ));
 });
+
+/// Las cuentas sin archivar (las que se ofrecen y suman), la por defecto primero.
+final activeAccountsProvider = Provider<List<WalletAccount>>(
+  (ref) {
+    final accounts = ref.watch(accountsProvider);
+    return [
+      for (final a in (accounts.hasValue ? accounts.value : null) ?? const <WalletAccount>[])
+        if (!a.archived) a,
+    ];
+  },
+);
+
+final accountActionsProvider = Provider<AccountActions>(
+  (ref) => AccountActions(ref.watch(accountRepositoryProvider), ref.watch(movementRepositoryProvider)),
+);
+
+/// Comandos sobre cuentas que tocan también los movimientos.
+class AccountActions {
+  AccountActions(this._accounts, this._movements);
+  final AccountRepository _accounts;
+  final MovementRepository _movements;
+
+  Future<void> save(WalletAccount account) => _accounts.save(account);
+
+  /// Borra la cuenta; si tiene movimientos, la archiva.
+  Future<void> delete(String id) => _accounts.delete(id);
+
+  /// Un movimiento sin cuenta es de la por defecto, así que ella también los tiene.
+  Future<bool> hasMovements(String id) async {
+    final defaultId = defaultAccountOf(await _accounts.watchAll().first)?.id;
+    final all = await _movements.watchAll().first;
+    return all.any((m) => (m.accountId ?? defaultId) == id || m.toAccountId == id);
+  }
+
+  /// Cambia la moneda solo si la cuenta no tiene movimientos: con ellos, cambiar
+  /// la moneda dejaría de contarlos. Devuelve si se cambió.
+  Future<bool> setCurrencyIfUnused(String id, String currency) async {
+    if (await hasMovements(id)) return false;
+    final account = (await _accounts.watchAll().first).where((a) => a.id == id).firstOrNull;
+    if (account == null) return false;
+    await _accounts.save(account.copyWith(currency: currency));
+    return true;
+  }
+
+  /// Hace de [id] la cuenta por defecto sin mover ningún saldo: el historial sin
+  /// cuenta seguía a la por defecto, así que antes se sella con la anterior.
+  /// Después queda una sola por defecto.
+  Future<void> setDefault(String id) async {
+    final accounts = await _accounts.watchAll().first;
+    final target = accounts.where((a) => a.id == id && !a.archived).firstOrNull;
+    final old = defaultAccountOf(accounts);
+    if (target == null || old == null || old.id == target.id) return;
+    final loose = (await _movements.watchAll().first).where((m) => m.accountId == null).toList();
+    if (loose.isNotEmpty) await _movements.saveAll([for (final m in loose) m.copyWith(accountId: old.id)]);
+    // Primero la nueva: en ningún instante falta una por defecto.
+    await _accounts.save(target.copyWith(isDefault: true));
+    for (final a in accounts.where((a) => a.isDefault && a.id != target.id)) {
+      await _accounts.save(a.copyWith(isDefault: false));
+    }
+  }
+}
+
+/// Total por moneda de las cuentas sin archivar (null mientras carga).
+final accountTotalsProvider = Provider<Map<String, int>?>((ref) {
+  final accounts = ref.watch(accountsProvider);
+  final balances = ref.watch(accountBalancesProvider);
+  if (!accounts.hasValue || !balances.hasValue) return null;
+  return totalsByCurrency(accounts.value!, balances.value!);
+});

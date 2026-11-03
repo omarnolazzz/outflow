@@ -349,6 +349,11 @@ void main() {
       expect(m.categoryId, kNoCategoryId);
     });
 
+    test('createdAt sale del "ahora" indicado', () {
+      final at = DateTime(2026, 10, 20, 9, 30);
+      expect(makeTransfer(from: a, to: b, amountMinor: 100, date: _day, now: at).createdAt, at);
+    });
+
     test('entre monedas exige el importe recibido; a la misma cuenta no se puede', () {
       expect(() => makeTransfer(from: a, to: usd, amountMinor: 1, date: _day), throwsArgumentError);
       expect(() => makeTransfer(from: a, to: a, amountMinor: 1, date: _day), throwsArgumentError);

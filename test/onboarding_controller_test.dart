@@ -1,8 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:outflow/core/domain/money.dart';
 import 'package:outflow/features/onboarding/presentation/onboarding_controller.dart';
-import 'package:outflow/features/wallet/domain/default_categories.dart';
 import 'package:outflow/features/wallet/domain/movement.dart';
+import 'package:outflow/features/wallet/domain/wallet_account.dart';
 import 'package:outflow/features/wallet/domain/wallet_settings.dart';
 
 import 'support/fakes.dart';
@@ -10,19 +9,21 @@ import 'support/fakes.dart';
 void main() {
   late MemorySettings settings;
   late MemoryMovements movements;
+  late MemoryAccounts accounts;
 
   setUp(() {
     settings = MemorySettings();
     movements = MemoryMovements();
+    accounts = MemoryAccounts();
   });
 
   OnboardingController make({bool short = false}) =>
-      OnboardingController(short: short, settings: settings, movements: movements);
+      OnboardingController(short: short, settings: settings, movements: movements, accounts: accounts);
 
-  test('el flujo completo tiene 7 pasos y el corto 5, ambos empiezan en moneda', () {
+  test('el flujo completo tiene 7 pasos y el corto 4 (sin "Tu primera cuenta")', () {
     expect(make().steps, [
       OnboardingStep.currency,
-      OnboardingStep.startingBalance,
+      OnboardingStep.firstAccount,
       OnboardingStep.carryOver,
       OnboardingStep.subscriptions,
       OnboardingStep.notifications,
@@ -31,7 +32,6 @@ void main() {
     ]);
     expect(make(short: true).steps, [
       OnboardingStep.currency,
-      OnboardingStep.startingBalance,
       OnboardingStep.carryOver,
       OnboardingStep.faceId,
       OnboardingStep.done,
@@ -57,13 +57,17 @@ void main() {
     expect(c.currency, 'PEN');
     expect(c.carryOver, isTrue);
     expect(c.startingBalanceMinor, 0);
+    expect(c.accountName, 'Mi cuenta');
     expect(c.faceId, isFalse);
   });
 
-  test('complete guarda los ajustes y crea "Saldo inicial" cuando es mayor que 0', () async {
+  test('complete reescribe "Mi cuenta": nombre, moneda y saldo desde ahora, sin movimiento "Saldo inicial"', () async {
     final now = DateTime(2026, 10, 21, 9);
+    // Como tras borrar todo: la cuenta por defecto ya existe, en otra moneda.
+    await accounts.ensureDefault('PEN');
     final c = make()
       ..setCurrency('USD')
+      ..setAccountName('  BBVA ')
       ..setStartingBalance(150000)
       ..setCarryOver(false)
       ..setFaceId(true);
@@ -76,19 +80,31 @@ void main() {
     expect(s.onboardingDone, isTrue);
     expect(s.walletStartedAt, now);
 
-    final m = movements.saved.single;
-    expect(m.kind, MovementKind.income);
-    expect(m.origin, MovementOrigin.initialBalance);
-    expect(m.title, 'Saldo inicial');
-    expect(m.categoryId, kOtherIncomeCategoryId);
-    expect(m.amount, const Money(150000, 'USD'));
-    expect(m.date, now);
+    final a = accounts.saved.single;
+    expect(a.id, kDefaultAccountId);
+    expect(a.isDefault, isTrue);
+    expect(a.name, 'BBVA');
+    expect(a.currency, 'USD');
+    expect(a.initialMinor, 150000);
+    expect(a.initialDate, now);
+    expect(movements.saved.where((m) => m.origin == MovementOrigin.initialBalance), isEmpty);
+    expect(movements.saved, isEmpty);
   });
 
-  test('sin saldo inicial no crea movimientos', () async {
-    await make().complete(DateTime(2026, 10, 21));
+  test('sin cuenta previa la crea una sola vez; sin nombre queda "Mi cuenta"', () async {
+    await (make()..setAccountName('   ')).complete(DateTime(2026, 10, 21));
+    final a = accounts.saved.single;
+    expect(a.name, 'Mi cuenta');
+    expect(a.initialMinor, 0);
     expect(movements.saved, isEmpty);
     expect(settings.read().onboardingDone, isTrue);
+  });
+
+  test('el flujo corto no toca las cuentas de quien ya tenía datos', () async {
+    final existing = newDefaultAccount('PEN');
+    accounts = MemoryAccounts([existing]);
+    await make(short: true).complete(DateTime(2026, 10, 21));
+    expect(accounts.saved.single.toJson(), existing.toJson());
   });
 
   test('conserva un walletStartedAt previo y los cobros borrados', () async {

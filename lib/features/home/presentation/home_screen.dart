@@ -27,6 +27,7 @@ import '../../subscriptions/presentation/widgets/pending_charge_card.dart';
 import '../../subscriptions/presentation/widgets/upcoming_carousel.dart';
 import '../../wallet/domain/month_summary.dart';
 import '../../wallet/presentation/wallet_providers.dart';
+import '../../wallet/presentation/widgets/accounts_card.dart';
 import '../../wallet/presentation/widgets/movement_row.dart';
 import '../../wallet/presentation/widgets/wallet_card.dart';
 
@@ -128,6 +129,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       ),
                     ),
                   ),
+                // Lo que hay en tus cuentas, debajo de lo que te queda este mes.
+                e(
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: AccountsCard(),
+                  ),
+                ),
                 // Solo ocupa sitio si hay saldos con amigos.
                 if (ref.watch(balancesProvider).isNotEmpty)
                   e(

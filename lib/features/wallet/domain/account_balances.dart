@@ -134,6 +134,7 @@ Movement? makeAdjustment({
 
 /// Transferencia de [amountMinor] (en la moneda de [from]) a otra cuenta propia.
 /// Entre monedas distintas hay que indicar [receivedMinor], en la de [to].
+/// [now] es el instante en que se apunta (por defecto, ahora).
 Movement makeTransfer({
   required WalletAccount from,
   required WalletAccount to,
@@ -141,6 +142,7 @@ Movement makeTransfer({
   int? receivedMinor,
   required DateTime date,
   String note = '',
+  DateTime? now,
 }) {
   if (amountMinor <= 0) throw ArgumentError('El importe de una transferencia tiene que ser positivo.');
   if (from.id == to.id) throw ArgumentError('Una transferencia necesita dos cuentas distintas.');
@@ -154,7 +156,7 @@ Movement makeTransfer({
     categoryId: kNoCategoryId,
     date: date,
     // Cuándo se apuntó, no cuándo ocurrió: lo necesitan los puntos de control.
-    createdAt: DateTime.now(),
+    createdAt: now ?? DateTime.now(),
     title: '${from.name} → ${to.name}',
     note: note,
     accountId: from.id,

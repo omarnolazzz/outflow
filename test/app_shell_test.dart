@@ -70,6 +70,7 @@ void main() {
     expect(find.text('Gasto'), findsOneWidget);
     expect(find.text('Ingreso'), findsOneWidget);
     expect(find.text('Suscripción'), findsOneWidget);
+    expect(find.text('Transferencia'), findsOneWidget);
 
     await tester.tap(find.bySemanticsLabel('Añadir'));
     await tester.pumpAndSettle();

@@ -1,21 +1,19 @@
 import 'package:flutter/foundation.dart';
-import 'package:uuid/uuid.dart';
 
-import '../../../core/domain/money.dart';
+import '../../wallet/data/hive_account_repository.dart';
 import '../../wallet/data/hive_movement_repository.dart';
 import '../../wallet/data/wallet_settings_repository.dart';
-import '../../wallet/domain/default_categories.dart';
-import '../../wallet/domain/movement.dart';
 
-enum OnboardingStep { currency, startingBalance, carryOver, subscriptions, notifications, faceId, done }
+enum OnboardingStep { currency, firstAccount, carryOver, subscriptions, notifications, faceId, done }
 
 /// Estado del asistente de configuración inicial. El corto (para quien ya
-/// tenía datos) salta las suscripciones y los avisos.
+/// tenía datos) salta "Tu primera cuenta", las suscripciones y los avisos.
 class OnboardingController extends ChangeNotifier {
   OnboardingController({
     required this.short,
     required WalletSettingsRepository settings,
     required this.movements,
+    required this.accounts,
   }) : _settings = settings {
     final s = settings.read();
     _currency = s.currency;
@@ -26,11 +24,11 @@ class OnboardingController extends ChangeNotifier {
   final bool short;
   final WalletSettingsRepository _settings;
   final MovementRepository movements;
+  final AccountRepository accounts;
 
   late final List<OnboardingStep> steps = short
       ? const [
           OnboardingStep.currency,
-          OnboardingStep.startingBalance,
           OnboardingStep.carryOver,
           OnboardingStep.faceId,
           OnboardingStep.done,
@@ -50,7 +48,11 @@ class OnboardingController extends ChangeNotifier {
   late String _currency;
   String get currency => _currency;
   int _startingBalanceMinor = 0;
+
+  /// Saldo de la primera cuenta, en unidades menores.
   int get startingBalanceMinor => _startingBalanceMinor;
+  String _accountName = 'Mi cuenta';
+  String get accountName => _accountName;
   late bool _carryOver;
   bool get carryOver => _carryOver;
   late bool _faceId;
@@ -80,6 +82,11 @@ class OnboardingController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setAccountName(String name) {
+    _accountName = name;
+    notifyListeners();
+  }
+
   void setCarryOver(bool v) {
     _carryOver = v;
     notifyListeners();
@@ -90,7 +97,9 @@ class OnboardingController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Guarda todo. Un `walletStartedAt` previo se conserva.
+  /// Guarda todo. Un `walletStartedAt` previo se conserva. En el flujo completo,
+  /// "Tu primera cuenta" reescribe la cuenta por defecto que ya existe (nunca
+  /// crea una segunda) y su saldo parte de ahora: no hay movimiento "Saldo inicial".
   Future<void> complete(DateTime now) async {
     final s = _settings.read();
     await _settings.save(s.copyWith(
@@ -100,17 +109,15 @@ class OnboardingController extends ChangeNotifier {
       onboardingDone: true,
       walletStartedAt: s.walletStartedAt ?? now,
     ));
-    if (_startingBalanceMinor > 0) {
-      await movements.save(Movement(
-        id: const Uuid().v4(),
-        kind: MovementKind.income,
-        amount: Money(_startingBalanceMinor, _currency),
-        categoryId: kOtherIncomeCategoryId,
-        date: now,
-        title: 'Saldo inicial',
-        origin: MovementOrigin.initialBalance,
-        createdAt: now,
-      ));
-    }
+    if (short) return;
+    final account = await accounts.ensureDefault(_currency);
+    final name = _accountName.trim();
+    await accounts.save(account.copyWith(
+      name: name.isEmpty ? 'Mi cuenta' : name,
+      currency: _currency,
+      initialMinor: _startingBalanceMinor,
+      initialDate: now,
+      isDefault: true,
+    ));
   }
 }

@@ -18,7 +18,10 @@ import '../../notifications/domain/notification_rule.dart';
 import '../../notifications/presentation/notification_providers.dart';
 import '../../notifications/presentation/widgets/notification_rule_editor.dart';
 import '../../wallet/data/payment_listener.dart';
+import '../../wallet/domain/wallet_account.dart';
 import '../../wallet/domain/wallet_settings.dart';
+import '../../wallet/presentation/screens/accounts_screen.dart';
+import '../../wallet/presentation/widgets/account_editor_sheet.dart';
 import '../../wallet/presentation/wallet_providers.dart';
 import 'apple_pay_guide_screen.dart';
 import 'category_editor_screen.dart';
@@ -73,7 +76,56 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
       ),
     );
-    if (picked != null && picked != current) await _update((s) => s.copyWith(currency: picked));
+    if (picked == null || picked == current) return;
+    await _update((s) => s.copyWith(currency: picked));
+    if (mounted) await _warnIfAccountCurrencyDiffers(picked);
+  }
+
+  /// Los movimientos nuevos van en la moneda principal; una cuenta por defecto en
+  /// otra moneda dejaría de moverse sin que se note. Se avisa y, si la cuenta no
+  /// tiene movimientos, se ofrece pasarla a la moneda nueva.
+  Future<void> _warnIfAccountCurrencyDiffers(String currency) async {
+    final WalletAccount account;
+    final bool used;
+    try {
+      final found = defaultAccountOf(await ref.read(accountRepositoryProvider).watchAll().first);
+      if (found == null || found.currency == currency) return;
+      account = found;
+      used = await ref.read(accountActionsProvider).hasMovements(found.id);
+    } catch (_) {
+      return;
+    }
+    if (!mounted) return;
+    final action = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Tu cuenta sigue en ${account.currency}'),
+        content: Text(
+          used
+              ? 'Tu cuenta «${account.name}» está en ${account.currency} y ya tiene movimientos, así que no se puede '
+                  'cambiar de moneda. Lo que registres en $currency no la moverá: crea una cuenta en $currency para '
+                  'llevar ese saldo.'
+              : 'Tu cuenta «${account.name}» está en ${account.currency}, pero lo que registres en $currency no la '
+                  'moverá. Como todavía no tiene movimientos, puedes pasarla a $currency.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(used ? 'Entendido' : 'Dejarla'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(used ? 'Crear cuenta' : 'Cambiar a $currency'),
+          ),
+        ],
+      ),
+    );
+    if (action != true || !mounted) return;
+    if (used) {
+      await showAccountEditor(context);
+    } else {
+      await ref.read(accountActionsProvider).setCurrencyIfUnused(account.id, currency);
+    }
   }
 
   Future<void> _signOut() async {
@@ -180,6 +232,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   _update((s) => s.copyWith(carryOver: v));
                 },
               ),
+            ),
+            _Tile(
+              icon: LucideIcons.landmark,
+              label: 'Cuentas',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AccountsScreen())),
             ),
             _Tile(
               icon: LucideIcons.tags,
