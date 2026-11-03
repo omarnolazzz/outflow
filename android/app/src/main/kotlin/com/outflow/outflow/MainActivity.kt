@@ -3,6 +3,7 @@ package com.outflow.outflow
 import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
@@ -16,6 +17,10 @@ import kotlin.math.abs
 
 // local_auth necesita una FragmentActivity para mostrar el diálogo biométrico.
 class MainActivity : FlutterFragmentActivity() {
+    private var shareChannel: MethodChannel? = null
+    private var pendingShare: String? = null
+    private var pendingShareFailed = false
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
@@ -66,6 +71,55 @@ class MainActivity : FlutterFragmentActivity() {
                 }
                 else -> result.notImplemented()
             }
+        }
+
+        // Compartir una captura con Outflow: la imagen se copia a la caché y la app la
+        // lee y la borra. Con la app cerrada espera a que Dart la pida (initialImage).
+        shareChannel = MethodChannel(messenger, "outflow/share").also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                if (call.method != "initialImage") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                val failed = pendingShareFailed
+                val path = pendingShare
+                pendingShare = null
+                pendingShareFailed = false
+                if (failed) result.error("copy", "No se pudo abrir la imagen compartida.", null) else result.success(path)
+            }
+        }
+        readShare(intent)?.let { share ->
+            pendingShare = share.getOrNull()
+            pendingShareFailed = share.isFailure
+        }
+    }
+
+    // Con la app ya abierta (launchMode singleTop) la imagen llega aquí.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val share = readShare(intent) ?: return
+        val path = share.getOrNull()
+        if (path != null) shareChannel?.invokeMethod("image", path) else shareChannel?.invokeMethod("failed", null)
+    }
+
+    /// null si el intent no es una imagen compartida; si lo es, la ruta de la copia en caché.
+    private fun readShare(intent: Intent?): Result<String>? {
+        if (intent?.action != Intent.ACTION_SEND || intent.type?.startsWith("image/") != true) return null
+        // Al reabrir desde recientes Android repite el intent original: esa imagen ya se leyó.
+        if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return null
+        return runCatching {
+            // Restos de una imagen anterior que no llegó a leerse.
+            cacheDir.listFiles { f -> f.name.startsWith("compartida_") }?.forEach { it.delete() }
+            @Suppress("DEPRECATION")
+            val uri = (if (Build.VERSION.SDK_INT >= 33) {
+                intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            } else {
+                intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            }) ?: throw IllegalStateException("Sin imagen")
+            val out = File(cacheDir, "compartida_${System.currentTimeMillis()}.jpg")
+            val input = contentResolver.openInputStream(uri) ?: throw IllegalStateException("No se pudo abrir")
+            input.use { src -> out.outputStream().use { dst -> src.copyTo(dst) } }
+            out.absolutePath
         }
     }
 

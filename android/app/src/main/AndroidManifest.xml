@@ -37,6 +37,12 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="outflow"/>
             </intent-filter>
+            <!-- Compartir una captura (p. ej. la constancia de Plin) con Outflow para leerla. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="image/*"/>
+            </intent-filter>
         </activity>
         <!-- Lee las notificaciones de pago de Google Wallet y de los bancos (con permiso del usuario). -->
         <service

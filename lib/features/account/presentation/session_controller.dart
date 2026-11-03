@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/di/core_providers.dart';
 import '../../../core/storage/local_store.dart';
 import '../../capture/data/capture_inbox.dart';
+import '../../capture/data/capture_key.dart';
 import '../../friends/presentation/friends_providers.dart';
 import '../../notifications/data/charge_answer_inbox.dart';
 import '../../wallet/domain/default_categories.dart';
@@ -259,6 +260,13 @@ class SessionController extends Notifier<SessionState> {
       await ref.read(captureInboxProvider).clear();
     } catch (_) {
       // Sin textos pendientes que descartar.
+    }
+    // El último texto de diagnóstico y la clave del atajo: un atajo viejo deja de valer.
+    ref.read(lastCaptureProvider.notifier).set(null);
+    try {
+      await ref.read(captureKeyStoreProvider).reset();
+    } catch (_) {
+      // Sin clave que olvidar.
     }
     state = NeedsOnboarding(account, short: false);
   }

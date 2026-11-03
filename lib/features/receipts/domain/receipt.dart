@@ -31,6 +31,7 @@ class ReceiptData {
     this.currency,
     this.items = const [],
     this.fromAi = false,
+    this.operationId,
   });
 
   final String? merchant;
@@ -42,6 +43,9 @@ class ReceiptData {
   /// Lo completó la IA (si no, solo la lectura local).
   final bool fromAi;
 
+  /// Número de operación de una constancia (Plin, Yape, transferencia). Los tickets no lo tienen.
+  final String? operationId;
+
   /// Rellena lo que falte con [fallback].
   ReceiptData merge(ReceiptData fallback) => ReceiptData(
         merchant: (merchant?.trim().isNotEmpty ?? false) ? merchant : fallback.merchant,
@@ -50,5 +54,6 @@ class ReceiptData {
         currency: currency ?? fallback.currency,
         items: items.isNotEmpty ? items : fallback.items,
         fromAi: fromAi,
+        operationId: operationId ?? fallback.operationId,
       );
 }

@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart' show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
@@ -113,6 +116,90 @@ void main() {
     expect(m.note, contains('Gaseosa 500ml'));
     expect(m.origin, MovementOrigin.applePay);
     expect(m.amount.currency, 'USD', reason: 'se completa sin cambiarle la moneda');
+  });
+
+  group('constancias', () {
+    final constancia = ReceiptData(
+      merchant: 'Marta Ejemplo Quispe',
+      date: DateTime(2026, 10, 20),
+      totalMinor: 3500,
+      currency: 'PEN',
+      operationId: '87654321',
+    );
+
+    testWidgets('el gasto guardado lleva el número de operación como externalRef', (tester) async {
+      final movements = await pump(tester, home: ReceiptResultScreen(receipt: constancia));
+      await tester.tap(find.text('Guardar gasto'));
+      await tester.pumpAndSettle();
+      expect(movements.saved.single.externalRef, '87654321');
+      expect(movements.saved.single.origin, MovementOrigin.ticket);
+    });
+
+    testWidgets('la misma operación dos veces deja un solo movimiento', (tester) async {
+      final movements = await pump(tester, home: Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => ReceiptResultScreen(receipt: constancia)),
+            ),
+            child: const Text('abrir'),
+          ),
+        ),
+      ));
+      for (var i = 0; i < 2; i++) {
+        await tester.tap(find.text('abrir'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Guardar gasto'));
+        await tester.pumpAndSettle();
+        expect(movements.saved, hasLength(1), reason: 'captura ${i + 1}');
+      }
+    });
+
+    testWidgets('al repetirla avisa de que ya estaba registrado', (tester) async {
+      await pump(tester, home: Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => ReceiptResultScreen(receipt: constancia)),
+            ),
+            child: const Text('abrir'),
+          ),
+        ),
+      ), existing: [
+        Movement(
+          id: 'm',
+          kind: MovementKind.expense,
+          amount: const Money(3500, 'PEN'),
+          categoryId: 'food',
+          date: now,
+          createdAt: now,
+          externalRef: '87654321',
+        ),
+      ]);
+      await tester.tap(find.text('abrir'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Guardar gasto'));
+      await tester.pumpAndSettle();
+      expect(find.text('Ya estaba registrado'), findsOneWidget);
+    });
+
+    testWidgets('la misma operación en otra cuenta sí es otro movimiento', (tester) async {
+      final other = Movement(
+        id: 'o',
+        kind: MovementKind.expense,
+        amount: const Money(9900, 'PEN'),
+        categoryId: 'food',
+        date: now,
+        createdAt: now,
+        title: 'Otro comercio',
+        externalRef: '87654321',
+        accountId: 'otra-cuenta',
+      );
+      final movements = await pump(tester, existing: [other], home: ReceiptResultScreen(receipt: constancia));
+      await tester.tap(find.text('Guardar gasto'));
+      await tester.pumpAndSettle();
+      expect(movements.saved, hasLength(2));
+    });
   });
 
   testWidgets('"No, es otro" crea un gasto nuevo', (tester) async {
@@ -265,6 +352,62 @@ void main() {
     expect(find.text('escanear'), findsOneWidget);
     expect(find.textContaining('Leyendo'), findsNothing);
   });
+
+  testWidgets('en iPhone, "Desde captura" abre la galería', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    final asked = <bool>[];
+    await pump(
+      tester,
+      picker: (fromCamera) async {
+        asked.add(fromCamera);
+        return null;
+      },
+      home: Consumer(
+        builder: (context, ref, _) => TextButton(onPressed: () => showScanReceipt(context), child: const Text('escanear')),
+      ),
+    );
+    await tester.tap(find.text('escanear'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Desde captura'));
+    await tester.pumpAndSettle();
+    expect(asked, [false]);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('en Android no hay "Desde captura": se comparte la imagen con Outflow', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    await pump(
+      tester,
+      home: Consumer(
+        builder: (context, ref, _) => TextButton(onPressed: () => showScanReceipt(context), child: const Text('escanear')),
+      ),
+    );
+    await tester.tap(find.text('escanear'));
+    await tester.pumpAndSettle();
+    expect(find.text('Elegir de la galería'), findsOneWidget);
+    expect(find.text('Desde captura'), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('una captura compartida se lee y su copia en caché se borra', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('outflow_share');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final file = File('${dir.path}/compartida_1.jpg')..writeAsBytesSync([1, 2, 3]);
+    await pump(
+      tester,
+      recognizer: _FixedText(plinConstanciaText),
+      home: Consumer(
+        builder: (context, ref, _) => TextButton(
+          onPressed: () => readSharedReceipt(context, file.path),
+          child: const Text('compartida'),
+        ),
+      ),
+    );
+    await tester.tap(find.text('compartida'));
+    await tester.pumpAndSettle();
+    expect(find.text('Marta Ejemplo Quispe'), findsOneWidget);
+    expect(file.existsSync(), isFalse, reason: 'la foto no se guarda');
+  });
 }
 
 class _BlankText implements TextRecognizer {
@@ -340,4 +483,13 @@ void reviewFixes() {
     expect(reader.calls, 0);
     expect(find.textContaining('No pudimos leer el ticket'), findsOneWidget);
   });
+}
+
+const plinConstanciaText = 'Constancia de operación\nPlin\nS/ 35.00\nPara: Marta Ejemplo Quispe\nFecha: 20/10/2026\nNro. de operación: 87654321';
+
+class _FixedText implements TextRecognizer {
+  _FixedText(this.text);
+  final String text;
+  @override
+  Future<String> recognize(String imagePath) async => text;
 }

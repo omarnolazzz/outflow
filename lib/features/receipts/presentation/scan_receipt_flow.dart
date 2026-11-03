@@ -12,6 +12,7 @@ import '../../../core/motion/app_motion.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/primary_button.dart';
+import '../../wallet/data/payment_listener.dart' show isAndroidDevice;
 import '../../wallet/presentation/wallet_providers.dart';
 import '../data/gemini_receipt_reader.dart';
 import '../data/text_recognizer.dart';
@@ -59,6 +60,16 @@ Future<void> showScanReceipt(BuildContext context) async {
               icon: const Icon(LucideIcons.image, size: 18, color: AppColors.ink),
               onTap: () => Navigator.pop(context, false),
             ),
+            // iPhone: sin extensión de compartir, la captura se busca en la galería.
+            if (!isAndroidDevice) ...[
+              const SizedBox(height: 10),
+              PrimaryButton(
+                label: 'Desde captura',
+                secondary: true,
+                icon: const Icon(LucideIcons.smartphone, size: 18, color: AppColors.ink),
+                onTap: () => Navigator.pop(context, false),
+              ),
+            ],
           ],
         ),
       ),
@@ -89,10 +100,21 @@ Future<void> scanReceipt(BuildContext context, {required bool fromCamera}) async
   ));
 }
 
+/// Lee una imagen que otra app compartió (ya copiada a la caché). Se borra al
+/// terminar de leerla: la foto no se guarda.
+Future<void> readSharedReceipt(BuildContext context, String path) =>
+    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(
+      fullscreenDialog: true,
+      builder: (_) => _ReadingScreen(path: path, deleteAfterReading: true),
+    ));
+
 /// La foto con una línea de escaneo mientras se lee; luego, el resultado.
 class _ReadingScreen extends ConsumerStatefulWidget {
-  const _ReadingScreen({required this.path});
+  const _ReadingScreen({required this.path, this.deleteAfterReading = false});
   final String path;
+
+  /// La imagen es una copia en caché de algo compartido: se borra tras leerla.
+  final bool deleteAfterReading;
 
   @override
   ConsumerState<_ReadingScreen> createState() => _ReadingScreenState();
@@ -111,7 +133,19 @@ class _ReadingScreenState extends ConsumerState<_ReadingScreen> with SingleTicke
   @override
   void dispose() {
     _scan.dispose();
+    _deleteSharedCopy();
     super.dispose();
+  }
+
+  /// La captura compartida era una copia en caché: no se queda en el teléfono.
+  void _deleteSharedCopy() {
+    if (!widget.deleteAfterReading || kIsWeb) return;
+    try {
+      final file = File(widget.path);
+      if (file.existsSync()) file.deleteSync();
+    } catch (_) {
+      // Si no se puede borrar, Android vacía la caché cuando le haga falta.
+    }
   }
 
   Future<void> _read() async {
@@ -129,6 +163,8 @@ class _ReadingScreenState extends ConsumerState<_ReadingScreen> with SingleTicke
       }
     } on TextRecognitionFailed {
       failed = true;
+    } finally {
+      _deleteSharedCopy();
     }
     if (!mounted) return;
     HapticFeedback.mediumImpact();

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -14,10 +15,12 @@ import 'features/account/domain/account.dart';
 import 'features/account/presentation/lock_screen.dart';
 import 'features/account/presentation/session_controller.dart';
 import 'features/account/presentation/welcome_screen.dart';
+import 'features/capture/presentation/capture_link_handler.dart';
 import 'features/capture/presentation/capture_providers.dart';
 import 'features/notifications/data/charge_answer_inbox.dart';
 import 'features/merchants/presentation/screens/catalog_screen.dart';
 import 'features/onboarding/presentation/onboarding_flow.dart';
+import 'features/receipts/data/shared_image.dart';
 import 'features/receipts/presentation/scan_receipt_flow.dart';
 import 'features/shell/presentation/app_shell.dart';
 import 'features/wallet/presentation/screens/movements_screen.dart';
@@ -51,6 +54,11 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
   StreamSubscription<String>? _tapSub;
   StreamSubscription<ChargeAnswer>? _answerSub;
   StreamSubscription<Uri>? _linkSub;
+  StreamSubscription<String>? _shareSub;
+
+  /// Captura compartida (Android) mientras la app está bloqueada: se lee al desbloquear.
+  String? _pendingSharedImage;
+  bool _pendingShareFailed = false;
 
   /// Pago de Apple Pay llegado con la app bloqueada: se abre al desbloquear.
   final _pendingLink = PendingLink();
@@ -86,6 +94,14 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
     final actions = ref.read(subscriptionActionsProvider);
     _answerSub = notifications.answers.listen(actions.applyAnswer);
     _linkSub = ref.read(incomingLinksProvider).listen(_onLink);
+    final shares = ref.read(sharedImageSourceProvider);
+    _shareSub = shares.images.listen(_onSharedImage, onError: (Object _) => _onShareFailed());
+    shares.initialImage().then<void>(
+      (path) {
+        if (path != null) _onSharedImage(path);
+      },
+      onError: (Object _) => _onShareFailed(),
+    );
     _applyQueuedAnswers();
   }
 
@@ -131,6 +147,11 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
 
   /// `outflow://gasto?…` del atajo de Apple Pay: hoja de gasto rellenada.
   void _onLink(Uri uri) {
+    // outflow://captura: el texto de un correo, con clave. Solo va a la bandeja; no abre nada.
+    if (uri.host == 'captura') {
+      ref.read(captureLinkHandlerProvider).handle(uri).ignore();
+      return;
+    }
     final currency = ref.read(walletSettingsRepositoryProvider).read().currency;
     // En Android los pagos llegan de los avisos de Google Pay y de los bancos.
     final draft = parseApplePayLink(
@@ -142,6 +163,53 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
     if (draft == null) return;
     final now = _pendingLink.offer(draft, ready: ref.read(sessionControllerProvider) is Ready);
     if (now != null) _openDraft(now);
+  }
+
+  /// Imagen compartida desde otra app (Android): abre su lectura, o espera al desbloqueo.
+  void _onSharedImage(String path) {
+    if (ref.read(sessionControllerProvider) is Ready) {
+      _openSharedImage(path);
+    } else {
+      _deleteCache(_pendingSharedImage);
+      _pendingSharedImage = path;
+    }
+  }
+
+  void _openSharedImage(String path) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = _navigator.currentContext;
+      if (context == null) {
+        _deleteCache(path);
+        return;
+      }
+      readSharedReceipt(context, path);
+    });
+  }
+
+  void _onShareFailed() {
+    if (ref.read(sessionControllerProvider) is Ready) {
+      _showShareFailed();
+    } else {
+      _pendingShareFailed = true;
+    }
+  }
+
+  void _showShareFailed() {
+    final context = _navigator.currentContext;
+    if (context == null) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
+      content: Text('No se pudo abrir la imagen compartida. Guárdala en la galería y elígela en Escanear ticket.'),
+    ));
+  }
+
+  void _deleteCache(String? path) {
+    if (path == null) return;
+    try {
+      final file = File(path);
+      if (file.existsSync()) file.deleteSync();
+    } catch (_) {
+      // La caché la vacía Android si hace falta.
+    }
   }
 
   /// Publica tu perfil para que tus amigos te encuentren por correo. Sin
@@ -180,6 +248,7 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
     _tapSub?.cancel();
     _answerSub?.cancel();
     _linkSub?.cancel();
+    _shareSub?.cancel();
     super.dispose();
   }
 
@@ -204,6 +273,15 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
         final drafts = _pendingLink.takeAll();
         // Se apilan en orden: el más reciente queda arriba.
         if (drafts.isNotEmpty) WidgetsBinding.instance.addPostFrameCallback((_) => drafts.forEach(_openDraft));
+      }
+      if (next is Ready) {
+        final shared = _pendingSharedImage;
+        _pendingSharedImage = null;
+        if (shared != null) _openSharedImage(shared);
+        if (_pendingShareFailed) {
+          _pendingShareFailed = false;
+          WidgetsBinding.instance.addPostFrameCallback((_) => _showShareFailed());
+        }
       }
       if (next is Ready && _pendingSubscriptionId != null) {
         final id = _pendingSubscriptionId!;

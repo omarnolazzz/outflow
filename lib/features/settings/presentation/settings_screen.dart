@@ -24,6 +24,7 @@ import '../../wallet/presentation/screens/accounts_screen.dart';
 import '../../wallet/presentation/widgets/account_editor_sheet.dart';
 import '../../wallet/presentation/wallet_providers.dart';
 import 'apple_pay_guide_screen.dart';
+import 'email_capture_guide_screen.dart';
 import 'category_editor_screen.dart';
 import 'google_pay_guide_screen.dart';
 
@@ -250,8 +251,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
                 builder: (_) => isAndroidDevice ? const GooglePayGuideScreen() : const ApplePayGuideScreen(),
               )),
-              last: true,
+              last: isAndroidDevice,
             ),
+            // iPhone: los correos del banco llegan por un atajo (Android los lee de las notificaciones).
+            if (!isAndroidDevice)
+              _Tile(
+                icon: LucideIcons.mailCheck,
+                label: 'Captura por correo',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const EmailCaptureGuideScreen()),
+                ),
+                last: true,
+              ),
           ])),
           e(const _Header('Seguridad')),
           e(_Group(children: [

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -72,6 +73,22 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+
+  testWidgets('en iPhone, Ajustes ofrece la captura por correo', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    await pump(tester);
+    expect(find.text('Captura por correo', skipOffstage: false), findsOneWidget);
+    expect(find.text('Registrar pagos con Apple Pay', skipOffstage: false), findsOneWidget);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('en Android, Ajustes no ofrece la captura por correo', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    await pump(tester);
+    expect(find.text('Captura automática', skipOffstage: false), findsOneWidget);
+    expect(find.text('Captura por correo', skipOffstage: false), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
+  });
   testWidgets('muestra la cuenta de Google', (tester) async {
     await pump(tester);
     expect(find.text('Gabriel Nolazco'), findsOneWidget);

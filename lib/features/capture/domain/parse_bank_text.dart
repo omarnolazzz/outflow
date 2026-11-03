@@ -580,3 +580,11 @@ String accountSearchText(String text, ParsedBankText parsed) {
   if (party == null) return masked;
   return masked.replaceAll(RegExp(RegExp.escape(party), caseSensitive: false), _mask);
 }
+
+/// Número de operación de un texto, solo si está etiquetado ("Nro. de operación",
+/// "Operación", "Referencia"…). Lo comparte la lectura de constancias con la de
+/// avisos para que ambas den la misma referencia a la misma operación.
+String? labelledOperationId(String text) {
+  final raw = _plainSpaces(text);
+  return _operationId(raw, _fold(raw));
+}

@@ -156,12 +156,33 @@ class _ReceiptResultScreenState extends ConsumerState<ReceiptResultScreen> {
     if (saved && mounted) Navigator.of(context).pop();
   }
 
+  /// Un movimiento con esta referencia en la cuenta donde iría el gasto (sin
+  /// cuenta es la de por defecto).
+  bool _alreadyRegistered(List<Movement> movements, String operationId) {
+    final defaultId = defaultAccountOf(ref.read(activeAccountsProvider))?.id;
+    final target = _account()?.id ?? defaultId;
+    final wanted = operationId.toLowerCase();
+    return movements.any((m) =>
+        m.externalRef?.toLowerCase() == wanted &&
+        ((m.accountId ?? defaultId) == target || (m.toAccountId != null && m.toAccountId == target)));
+  }
+
   Future<void> _save(String categoryId) async {
     final now = ref.read(nowProvider);
     final currency = _currency();
     final date = _date ?? now;
     final merchant = _merchant.text.trim();
     final movements = _movements;
+
+    // La misma operación en la misma cuenta es la misma constancia: no se apunta dos veces.
+    final operationId = widget.receipt.operationId;
+    if (operationId != null && _alreadyRegistered(movements, operationId)) {
+      HapticFeedback.selectionClick();
+      Navigator.of(context).pop();
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text('Ya estaba registrado')));
+      return;
+    }
+
     final candidates = findMatchingPayments(
       movements: movements,
       amountMinor: _total.minor,
@@ -185,6 +206,7 @@ class _ReceiptResultScreenState extends ConsumerState<ReceiptResultScreen> {
             title: merchant.isEmpty ? existing.title : merchant,
             note: [if (existing.note.isNotEmpty) existing.note, note].join('\n'),
             date: existing.date,
+            externalRef: existing.externalRef ?? operationId,
           )
         : Movement(
             id: const Uuid().v4(),
@@ -197,6 +219,7 @@ class _ReceiptResultScreenState extends ConsumerState<ReceiptResultScreen> {
             origin: MovementOrigin.ticket,
             createdAt: now,
             accountId: _account()?.id,
+            externalRef: operationId,
           );
     await ref.read(walletActionsProvider).save(movement);
     HapticFeedback.mediumImpact();

@@ -81,18 +81,20 @@ class GeminiReceiptReader implements ReceiptReader {
       final part = (((reply['candidates'] as List).first as Map)['content'] as Map)['parts'] as List;
       final json = jsonDecode((part.first as Map)['text'] as String) as Map<String, Object?>;
       final ai = _fromJson(json, now).merge(local);
+      // El destinatario de una constancia lo lee mejor la lectura local ("Plin"
+      // no es a quien se pagó); el número de operación solo sale de ella.
+      final merchant = local.operationId != null && local.merchant != null ? local.merchant : ai.merchant;
       // La fecha leída del propio ticket (día/mes) manda sobre la de la IA,
       // que podría leer 08/10 como 10 de agosto.
-      return local.date == null
-          ? ai
-          : ReceiptData(
-              merchant: ai.merchant,
-              date: local.date,
-              totalMinor: ai.totalMinor,
-              currency: ai.currency,
-              items: ai.items,
-              fromAi: true,
-            );
+      return ReceiptData(
+        merchant: merchant,
+        date: local.date ?? ai.date,
+        totalMinor: ai.totalMinor,
+        currency: ai.currency,
+        items: ai.items,
+        fromAi: true,
+        operationId: local.operationId,
+      );
     } catch (e) {
       debugPrint('Gemini no pudo leer el ticket: $e');
       return local;

@@ -1,3 +1,4 @@
+import '../../capture/domain/parse_bank_text.dart' show labelledOperationId;
 import '../../wallet/domain/apple_pay_link.dart' show parseAmountMinor;
 import 'receipt.dart';
 
@@ -18,6 +19,12 @@ const _notTotal = ['SUBTOTAL', 'ART', 'ITEM', 'IVA', 'IGV', 'DESC', 'CUOTA', 'BA
 /// Importe con dos decimales ("23,45", "1.234,56").
 final _decimalAmount = RegExp(r'\d{1,3}(?:[.,]\d{3})*[.,]\d{2}\b');
 final _itemLine = RegExp(r'^(\d{1,3})\s+(.+?)\s+(\d+[.,]\d{2})\s*(?:EUR|PEN|USD|S/|€|\$)?$');
+
+/// Constancia de una transferencia (Plin, Yape…): la pantalla que deja el pago.
+final _constanciaWords = RegExp(r'\b(?:CONSTANCIA|PLIN|YAPE|YAPEASTE|PLINEASTE)\b');
+final _operationLabel = RegExp(r'(?:N[°º]|NRO\.?|NUMERO|NÚMERO|C[OÓ]DIGO)\s*(?:DE\s+)?OPERACI[OÓ]N');
+final _recipientLine = RegExp(r'^(?:PARA|DESTINO|DESTINATARIO|NOMBRE)(?:\s*:\s*|\s+)(.+)$|^A\s*:\s*(.+)$', caseSensitive: false);
+final _prefixedAmount = RegExp(r'(?:S/\.?|US\$|\$|€)\s*(\d[\d.,]*)');
 
 /// Lectura local, sin red, de un ticket: el total de la línea TOTAL (no el
 /// subtotal ni el vuelto), la fecha más plausible, el comercio y los productos.
@@ -55,9 +62,36 @@ ReceiptData parseReceiptHeuristic(String text, {required DateTime now, required 
     totalRank = rank;
   }
 
+  // Una constancia no tiene línea TOTAL: el importe es el que lleva moneda, y
+  // quien cobra es el destinatario, no la primera línea de texto.
+  final isConstancia = _constanciaWords.hasMatch(upper) || _operationLabel.hasMatch(upper);
+  String? recipient;
+  if (isConstancia) {
+    if (total == null) {
+      final labelled = lines.where((l) => RegExp(r'\b(?:MONTO|IMPORTE)\b').hasMatch(l.toUpperCase()));
+      for (final l in [...labelled, ...lines]) {
+        final m = _prefixedAmount.firstMatch(l.toUpperCase());
+        final amount = m == null ? null : parseAmountMinor(m.group(1)!);
+        if (amount != null && amount > 0) {
+          total = amount;
+          break;
+        }
+      }
+    }
+    for (final l in lines) {
+      final m = _recipientLine.firstMatch(l);
+      final name = (m?.group(1) ?? m?.group(2))?.trim();
+      if (name != null && RegExp(r'[A-Za-zÁÉÍÓÚÑáéíóúñ]{2}').hasMatch(name)) {
+        recipient = name;
+        break;
+      }
+    }
+  }
+
   String? merchant;
   var merchantLine = -1;
   for (final (i, l) in lines.indexed) {
+    if (isConstancia) break;
     final u = l.toUpperCase();
     final letters = RegExp(r'[A-ZÁÉÍÓÚÑÜ]').allMatches(u).length;
     final digits = RegExp(r'\d').allMatches(u).length;
@@ -80,11 +114,13 @@ ReceiptData parseReceiptHeuristic(String text, {required DateTime now, required 
   }
 
   return ReceiptData(
-    merchant: merchant,
+    merchant: isConstancia ? recipient : merchant,
     date: _findDate(lines, now),
     totalMinor: total,
     currency: currency,
     items: items,
+    // Solo las constancias: el "N°" de un ticket no identifica ninguna operación.
+    operationId: isConstancia ? labelledOperationId(text) : null,
   );
 }
 

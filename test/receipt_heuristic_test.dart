@@ -40,8 +40,56 @@ EFECTIVO S/ 50.00
 VUELTO S/ 4.10
 ''';
 
+const plinConstancia = '''
+Constancia de operación
+Plin
+S/ 35.00
+Para: Marta Ejemplo Quispe
+Fecha: 20/10/2026 18:45
+Nro. de operación: 87654321
+''';
+
+void constanciaTests() {
+  group('constancias de Plin y Yape', () {
+    final now = DateTime(2026, 10, 22, 13);
+
+    test('se leen importe, destinatario, fecha y número de operación', () {
+      final r = parseReceiptHeuristic(plinConstancia, now: now, fallbackCurrency: 'PEN');
+      expect(r.totalMinor, 3500);
+      expect(r.currency, 'PEN');
+      expect(r.merchant, 'Marta Ejemplo Quispe');
+      expect(r.date, DateTime(2026, 10, 20));
+      expect(r.operationId, '87654321');
+    });
+
+    test('el destinatario también se lee tras A, Destino o Nombre', () {
+      for (final label in ['A:', 'Destino', 'Nombre:']) {
+        final r = parseReceiptHeuristic(
+          'Yape\nYapeaste S/ 12.50\n$label Luis Prueba\nN° de operación 5550001',
+          now: now,
+          fallbackCurrency: 'PEN',
+        );
+        expect(r.merchant, 'Luis Prueba', reason: label);
+        expect(r.totalMinor, 1250, reason: label);
+        expect(r.operationId, '5550001', reason: label);
+      }
+    });
+
+    test('un ticket normal no tiene operationId aunque traiga un N°', () {
+      for (final t in [taberna, bodega]) {
+        final r = parseReceiptHeuristic(t, now: now, fallbackCurrency: 'PEN');
+        expect(r.operationId, isNull);
+      }
+      final r = parseReceiptHeuristic('TIENDA X\nN° 12345\nTOTAL 10,00 EUR', now: now, fallbackCurrency: 'EUR');
+      expect(r.operationId, isNull);
+      expect(r.totalMinor, 1000);
+    });
+  });
+}
+
 void main() {
   reviewFixes();
+  constanciaTests();
   final now = DateTime(2026, 10, 22);
 
   ReceiptData parse(String t) => parseReceiptHeuristic(t, now: now, fallbackCurrency: 'PEN');
