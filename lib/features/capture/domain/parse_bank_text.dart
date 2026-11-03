@@ -124,6 +124,14 @@ final _doneBefore = RegExp('\\b(?:$_doneWords)[oa]s?\\b');
 final _doneAfter = RegExp('^\\s*(?:fue\\s+|ha sido\\s+)?(?:$_doneWords)[oa]s?\\b');
 final _participleAfter = RegExp(r'^\s*(?:recibid|pagad|enviad|transferid|abonad|depositad)[oa]s?\b');
 final _conditional = RegExp('\\bsi\\s+(?:$_pastVerbs)\\b');
+final _directCharge = RegExp(r'\b(?:consumo|cargo)\s+(?:(?:de|por)\s+)?$');
+
+/// Una clave de un solo uso con su número. "Código de operación" o "de
+/// autorización" identifican un pago hecho: esos no son claves.
+final _oneTimeCode = RegExp(
+  r'\b(?:clave(?:\s+dinamica)?|token|otp|codigo(?:\s+de\s+(?:verificacion|seguridad|confirmacion))?)'
+  r'\s*(?:es\s+)?[:#]?\s*(?:es\s+)?\d{4,8}\b',
+);
 
 /// Antes del importe (tras el último verbo): no es el importe de la operación.
 final _discardBefore = RegExp(
@@ -303,7 +311,7 @@ const _signalNoun = 1;
 int _signal(String window, String after, {required bool labelled}) {
   if (_verbRe.hasMatch(window)) return _signalVerb;
   if (labelled && _montoRe.hasMatch(window)) return _signalLabel;
-  if (_refundRe.hasMatch(window)) return _signalNoun;
+  if (_refundRe.hasMatch(window) || _directCharge.hasMatch(window)) return _signalNoun;
   if (_chargeRe.hasMatch(window) && (_placeAfter.hasMatch(after) || _placeBefore.hasMatch(window))) return _signalNoun;
   if (_opNounRe.hasMatch(window) && (_doneBefore.hasMatch(window) || _doneAfter.hasMatch(after))) return _signalNoun;
   return 0;
@@ -551,6 +559,8 @@ ParsedBankText? parseBankText(String text, {required String fallbackCurrency, re
   if (_blockers.hasMatch(sentence) || _conditional.hasMatch(sentence)) return null;
   // Sin verbo en pasado, un "Estado: Rechazado" en otra línea sí la descarta.
   if (signal != _signalVerb && _failedRe.hasMatch(folded)) return null;
+  // Sin ningún verbo en pasado, una clave con su número es un mensaje de seguridad.
+  if (!_verbRe.hasMatch(folded) && _oneTimeCode.hasMatch(rawFolded)) return null;
   return (amount: best, signal: signal);
 }
 

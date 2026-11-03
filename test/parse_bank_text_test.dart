@@ -83,6 +83,59 @@ void main() {
       expect(consumo.direction, CaptureDirection.out);
     });
 
+    test('consumo o cargo justo antes del importe bastan, sin comercio', () {
+      for (final (text, minor) in const [
+        ('Consumo S/ 25.00', 2500),
+        ('Consumo de S/ 25.00', 2500),
+        ('Consumo por S/ 25.00', 2500),
+        ('Cargo de S/ 12.00', 1200),
+        ('Cargo S/ 12.00', 1200),
+      ]) {
+        final p = parse(text)!;
+        expect(p.amountMinor, minor, reason: text);
+        expect(p.direction, CaptureDirection.out, reason: text);
+      }
+    });
+
+    test('compra sigue siendo estricta; consumo o cargo lejos del importe no bastan', () {
+      for (final t in const [
+        'Compra S/ 20 y participa',
+        'Compra de S/ 20',
+        'Tu consumo mensual promedio es S/ 25.00',
+        'Cargo de S/ 12.00 por mantenimiento',
+        'Tu próximo cargo S/ 12.00',
+      ]) {
+        expect(parse(t), isNull, reason: t);
+      }
+    });
+
+    test('sin verbo en pasado, una clave con su número bloquea todo el texto', () {
+      for (final t in const [
+        'Tu clave es 482913\nCompra de S/ 50 en Tienda',
+        'Token 482913\nConsumo de S/ 50.00 en Tienda',
+        'OTP: 4829\nConsumo de S/ 50.00 en Tienda',
+        'Código: 48291300\nCargo de S/ 50.00',
+        'Tu código de verificación es 482913\nCompra de S/ 50 en Tienda',
+      ]) {
+        expect(parse(t), isNull, reason: t);
+      }
+    });
+
+    test('la palabra sola, o un identificador de la operación, no bloquean', () {
+      for (final t in const [
+        'Consumo de S/ 45.00 en Tambo\nNo compartas tu clave con nadie',
+        'Consumo de S/ 45.00 en Tambo\nCódigo de operación: 123456',
+        'Consumo de S/ 45.00 en Tambo\nCódigo de autorización: 123456',
+      ]) {
+        expect(parse(t)!.amountMinor, 4500, reason: t);
+      }
+      expect(parse('Consumo de S/ 45.00 en Tambo\nCódigo de operación: 123456')!.operationId, '123456');
+    });
+
+    test('con un verbo en pasado, una clave en otra línea no anula el pago', () {
+      expect(parse('Pagaste S/ 25.00 en Tambo\nTu clave es 482913')!.amountMinor, 2500);
+    });
+
     test('la moneda sale del texto y si no, de la principal', () {
       expect(parse('Pagaste USD 9.99 en Amazon')!.currency, 'USD');
       expect(parse('Pagaste S/ 9.99 en Tambo', fallback: 'USD')!.currency, 'PEN');
