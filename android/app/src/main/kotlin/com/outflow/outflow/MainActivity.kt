@@ -42,13 +42,27 @@ class MainActivity : FlutterFragmentActivity() {
             }
         }
 
-        // Pagos con Google Pay / bancos leídos de sus notificaciones.
+        // Captura automática: permiso de notificaciones y apps que se leen.
         MethodChannel(messenger, "outflow/payments").setMethodCallHandler { call, result ->
             when (call.method) {
                 "isEnabled" -> result.success(listenerEnabled())
                 "openSettings" -> {
                     startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     result.success(null)
+                }
+                "seenApps" -> result.success(
+                    CaptureStore.seenApps(this).map { (pkg, label) -> mapOf("package" to pkg, "label" to label) },
+                )
+                "enabledApps" -> result.success(CaptureStore.enabledApps(this))
+                "setEnabled" -> {
+                    val pkg = call.argument<String>("package")
+                    val on = call.argument<Boolean>("enabled")
+                    if (pkg == null || on == null) {
+                        result.error("args", "Faltan datos.", null)
+                    } else {
+                        CaptureStore.setEnabled(this, pkg, on)
+                        result.success(null)
+                    }
                 }
                 else -> result.notImplemented()
             }

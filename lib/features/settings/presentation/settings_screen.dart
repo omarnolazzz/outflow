@@ -243,10 +243,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               label: 'Categorías',
               onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const CategoryEditorScreen())),
             ),
-            // iPhone: atajo de Apple Pay. Android: avisos de Google Pay y bancos.
+            // iPhone: atajo de Apple Pay. Android: captura automática de notificaciones.
             _Tile(
               icon: LucideIcons.smartphoneNfc,
-              label: isAndroidDevice ? 'Registrar pagos con Google Pay' : 'Registrar pagos con Apple Pay',
+              label: isAndroidDevice ? 'Captura automática' : 'Registrar pagos con Apple Pay',
               onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
                 builder: (_) => isAndroidDevice ? const GooglePayGuideScreen() : const ApplePayGuideScreen(),
               )),
