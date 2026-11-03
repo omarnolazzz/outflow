@@ -12,6 +12,11 @@ service cloud.firestore {
         && request.resource.data.email == myEmail();
     }
 
+    // Dispositivo que tiene la cuenta abierta (sesión única).
+    match /sessions/{uid} {
+      allow read, write: if signedIn() && me() == uid;
+    }
+
     match /emailIndex/{email} {
       allow get: if signedIn();
       allow create, update: if signedIn() && email == myEmail()

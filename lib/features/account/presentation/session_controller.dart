@@ -11,6 +11,7 @@ import '../../wallet/domain/default_categories.dart';
 import '../../wallet/domain/wallet_settings.dart';
 import '../../wallet/presentation/wallet_providers.dart';
 import '../data/auth_providers.dart';
+import '../data/device_session.dart';
 import '../data/preview_auth_service.dart';
 import '../domain/account.dart';
 import '../domain/auth_service.dart';
@@ -27,7 +28,10 @@ class SessionLoading extends SessionState {
 
 /// Sin cuenta: pantalla de bienvenida con "Continuar con Google".
 class SignedOut extends SessionState {
-  const SignedOut();
+  const SignedOut({this.notice});
+
+  /// Aviso para la bienvenida (p. ej. la cuenta se abrió en otro dispositivo).
+  final String? notice;
 }
 
 /// Con cuenta, bloqueada: Face ID (solo al pulsar) o "Continuar con Google".
@@ -57,6 +61,31 @@ final currentAccountProvider = Provider<Account?>((ref) => switch (ref.watch(ses
       Ready(:final account) || Locked(:final account) || NeedsOnboarding(:final account) => account,
       _ => null,
     });
+
+/// Vigila que este dispositivo siga siendo el de la cuenta (se observa en
+/// `app.dart`). Si el documento no existe (usuario que actualiza) lo reclama;
+/// si otro dispositivo confirmado por el servidor lo tiene, cierra la sesión.
+final deviceSessionGuardProvider = Provider<void>((ref) {
+  final uid = ref.watch(currentAccountProvider.select((a) => a?.uid));
+  final deviceId = ref.watch(deviceIdProvider).value;
+  if (uid == null || deviceId == null || !ref.watch(authServiceProvider).verifiesIdentity) return;
+  final repo = ref.watch(deviceSessionRepositoryProvider);
+  var claimed = false;
+  final sub = repo.watch(uid).listen(
+    (remote) {
+      if (isSessionLost(remote, deviceId)) {
+        ref.read(sessionControllerProvider.notifier).sessionLost();
+      } else if (remote.deviceId == null && remote.trusted && !claimed) {
+        claimed = true;
+        repo.claim(uid, deviceId).catchError((Object e) {
+          debugPrint('No se pudo reclamar la sesión: $e');
+        });
+      }
+    },
+    onError: (Object e) => debugPrint('No se pudo vigilar la sesión: $e'),
+  );
+  ref.onDispose(sub.cancel);
+});
 
 /// Ya había suscripciones guardadas (usuario que actualiza desde la versión con PIN).
 final hasExistingDataProvider = Provider<bool>(
@@ -146,6 +175,9 @@ class SessionController extends Notifier<SessionState> {
         return 'Esa no es la cuenta de esta wallet.';
       }
       if (owner == null && saved != account.uid) await repo.save(repo.read().copyWith(ownerUid: account.uid));
+      // El último dispositivo en entrar se queda con la cuenta. Sin esperar al
+      // servidor: sin red la escritura no termina hasta que vuelve.
+      await _claimDevice(account);
       state = _after(account, lock: false);
       return null;
     } on AuthOffline {
@@ -155,6 +187,27 @@ class SessionController extends Notifier<SessionState> {
     } on AuthFailed catch (e) {
       return e.message;
     }
+  }
+
+  /// Lanza el `claim` sin esperar al servidor. Se llama antes de pasar a la
+  /// sesión abierta para que la escritura ya esté pendiente cuando el guard
+  /// empiece a vigilar (si no, vería el documento viejo del otro dispositivo).
+  Future<void> _claimDevice(Account account) async {
+    try {
+      final deviceId = await ref.read(deviceIdProvider.future);
+      unawaited(ref.read(deviceSessionRepositoryProvider).claim(account.uid, deviceId).catchError((Object e) {
+        debugPrint('No se pudo reclamar la sesión: $e');
+      }));
+    } catch (e) {
+      debugPrint('No se pudo reclamar la sesión: $e');
+    }
+  }
+
+  /// Otro dispositivo abrió la cuenta: se cierra la sesión aquí, pero la
+  /// wallet local y su dueña (`ownerUid`) quedan como estaban.
+  Future<void> sessionLost() async {
+    await _auth.signOut();
+    state = const SignedOut(notice: 'Tu cuenta se abrió en otro dispositivo.');
   }
 
   /// Solo se llama al pulsar el botón: nunca automáticamente.

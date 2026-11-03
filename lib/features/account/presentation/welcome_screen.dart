@@ -13,7 +13,10 @@ import 'session_controller.dart';
 /// Primera pantalla, como la referencia "Login animacion": arriba la
 /// ilustración y abajo una tarjeta que sube con el acceso con Google.
 class WelcomeScreen extends ConsumerStatefulWidget {
-  const WelcomeScreen({super.key});
+  const WelcomeScreen({super.key, this.notice});
+
+  /// Aviso informativo (no es un error), p. ej. que la cuenta se abrió en otro dispositivo.
+  final String? notice;
 
   @override
   ConsumerState<WelcomeScreen> createState() => _WelcomeScreenState();
@@ -23,10 +26,15 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
   bool _busy = false;
   String? _error;
 
+  bool _noticeSeen = false;
+
+  String? get shownNotice => _noticeSeen ? null : widget.notice;
+
   Future<void> _google() async {
     setState(() {
       _busy = true;
       _error = null;
+      _noticeSeen = true;
     });
     final error = await ref.read(sessionControllerProvider.notifier).continueWithGoogle();
     if (mounted) {
@@ -68,9 +76,15 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                 SizedBox(
                   height: 20,
                   child: AnimatedOpacity(
-                    opacity: _error == null ? 0 : 1,
+                    opacity: (_error ?? shownNotice) == null ? 0 : 1,
                     duration: const Duration(milliseconds: 200),
-                    child: Text(_error ?? '', style: AppType.footnote.copyWith(color: AppColors.danger)),
+                    child: Text(
+                      _error ?? shownNotice ?? '',
+                      textAlign: TextAlign.center,
+                      style: AppType.footnote.copyWith(
+                        color: _error == null ? AppColors.inkSecondary : AppColors.danger,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 6),

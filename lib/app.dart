@@ -188,6 +188,9 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
     ref.watch(chargeMovementSyncProvider);
     ref.watch(splitMovementSyncProvider);
 
+    // Una cuenta de Google solo vive en un dispositivo: el último en entrar gana.
+    ref.watch(deviceSessionGuardProvider);
+
     ref.listen(sessionControllerProvider, (prev, next) {
       if (next is Ready && prev is! Ready) _publishProfile(next.account);
       if (next is Ready) {
@@ -251,7 +254,7 @@ class _LockLayer extends StatelessWidget {
 
   Widget? _screen() => switch (session) {
     SessionLoading() => const ColoredBox(color: AppColors.background),
-    SignedOut() => const WelcomeScreen(),
+    SignedOut(:final notice) => WelcomeScreen(notice: notice),
     final Locked s => LockScreen(state: s),
     final NeedsOnboarding s => OnboardingFlow(state: s),
     Ready() => null,

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:outflow/features/account/data/device_session.dart';
 import 'package:outflow/features/account/domain/account.dart';
 import 'package:outflow/features/account/domain/auth_service.dart';
 import 'package:outflow/features/account/presentation/session_controller.dart';
@@ -72,6 +73,7 @@ void main() {
       walletSettingsRepositoryProvider.overrideWithValue(settings),
       hasExistingDataProvider.overrideWithValue(existingData),
       clearLegacyPinProvider.overrideWithValue(() async => legacyCleared++),
+      deviceIdProvider.overrideWith((ref) async => 'yo'),
     ]);
     addTearDown(c.dispose);
     c.read(sessionControllerProvider);
