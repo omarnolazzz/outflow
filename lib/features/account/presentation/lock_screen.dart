@@ -6,15 +6,15 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/motion/motion_widgets.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
-import '../../../core/widgets/outflow_mark.dart';
 import '../../../core/widgets/primary_button.dart';
 import '../../../core/widgets/pressable.dart';
 import 'account_avatar.dart';
 import 'intro_host.dart';
+import 'login_hero.dart';
 import 'session_controller.dart';
 
-/// Pantalla de bloqueo: Face ID solo al pulsar (nunca automático) o volver a
-/// verificar la cuenta con Google.
+/// Pantalla de bloqueo, con la misma ilustración que la bienvenida: Face ID
+/// solo al pulsar (nunca automático) o volver a verificar la cuenta con Google.
 class LockScreen extends ConsumerStatefulWidget {
   const LockScreen({super.key, required this.state});
   final Locked state;
@@ -59,24 +59,21 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   Widget build(BuildContext context) {
     final account = widget.state.account;
     return IntroHost(
-      builder: (context, markKey, introRunning) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
+      builder: (context, markKey, introRunning) => Column(
+        children: [
+          Expanded(child: LoginHero(markKey: markKey, introRunning: introRunning)),
+          LoginCard(
             children: [
-              const Spacer(flex: 3),
-              Opacity(opacity: introRunning ? 0 : 1, child: OutflowMark(key: markKey, size: 64)),
-              const SizedBox(height: 36),
               Entrance(
-                index: 1,
+                index: 2,
                 scale: 0.8,
-                child: AccountAvatar(account: account, size: 64),
+                child: AccountAvatar(account: account, size: 56),
               ),
-              const SizedBox(height: 14),
-              Entrance(index: 2, child: Text('Hola, ${account.firstName}', style: AppType.title1)),
-              const SizedBox(height: 4),
+              const SizedBox(height: 10),
+              Entrance(index: 3, child: Text('Hola, ${account.firstName}', style: AppType.title1)),
+              const SizedBox(height: 2),
               Entrance(index: 3, child: Text(account.email, style: AppType.subhead)),
-              const Spacer(flex: 4),
+              const SizedBox(height: 8),
               SizedBox(
                 height: 20,
                 child: AnimatedOpacity(
@@ -85,7 +82,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                   child: Text(_error ?? '', style: AppType.footnote.copyWith(color: AppColors.danger)),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               if (widget.state.faceId) ...[
                 Entrance(
                   index: 4,
@@ -112,7 +109,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
               ),
               // Sin Face ID activado, el bloqueo del teléfono siempre sirve (también sin red).
               if (!widget.state.faceId) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 Pressable(
                   onTap: _faceId,
                   borderRadius: BorderRadius.circular(10),
@@ -125,10 +122,9 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                   ),
                 ),
               ],
-              const SizedBox(height: 16),
             ],
           ),
-        ),
+        ],
       ),
     );
   }
