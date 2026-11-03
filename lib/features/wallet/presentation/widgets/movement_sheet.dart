@@ -26,6 +26,7 @@ import '../../domain/apple_pay_link.dart';
 import '../../domain/category.dart';
 import '../../domain/expense_hints.dart';
 import '../../domain/movement.dart';
+import '../../domain/wallet_account.dart';
 import '../wallet_providers.dart';
 import 'account_picker.dart';
 import 'category_icon.dart';
@@ -84,7 +85,6 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
     _amount.addListener(() => setState(() {}));
     _categoryId = _e?.categoryId ?? widget.draft?.categoryId;
     _date = _e?.date ?? widget.draft?.date;
-    _accountId = _e?.accountId;
   }
 
   @override
@@ -221,8 +221,13 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
     final fixedCurrency = _e?.amount.currency ?? widget.draft?.currency;
     final active = ref.watch(activeAccountsProvider);
     final pickable = selectableAccounts(active, currency: fixedCurrency);
-    final showAccounts = !_isCharge && !_isSplit && active.length > 1 && pickable.isNotEmpty;
-    final account = showAccounts ? resolveAccount(pickable, _accountId) : null;
+    // Al editar, la cuenta del movimiento no cambia salvo que se elija otra a mano
+    // (_accountId): sin cuenta es la por defecto. Si su cuenta no se puede elegir
+    // (archivada u otra moneda) no hay selector y se conserva.
+    final effectiveId = _accountId ?? (_e == null ? null : (_e!.accountId ?? defaultAccountOf(active)?.id));
+    final editable = _e == null || pickable.any((a) => a.id == effectiveId);
+    final showAccounts = !_isCharge && !_isSplit && active.length > 1 && pickable.isNotEmpty && editable;
+    final account = showAccounts ? resolveAccount(pickable, effectiveId) : null;
     // Sin fijar, el importe va en la moneda de la cuenta elegida.
     final amountCurrency = fixedCurrency ?? account?.currency ?? currency;
 
@@ -254,7 +259,7 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
             label: 'Guardar',
             loading: _saving,
             onTap: _amount.minor > 0 && categoryId != null
-                ? () => _save(amountCurrency, categoryId, date, account?.id)
+                ? () => _save(amountCurrency, categoryId, date, _e == null ? account?.id : _accountId)
                 : null,
           ),
         ],

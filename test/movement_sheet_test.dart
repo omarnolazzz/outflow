@@ -362,6 +362,62 @@ void main() {
       expect(movements.saved.single.accountId, 'default');
     });
 
+    Movement lunchOn(String? accountId, {String currency = 'PEN'}) => Movement(
+          id: 'x',
+          kind: MovementKind.expense,
+          amount: Money(1500, currency),
+          categoryId: 'food',
+          date: now,
+          createdAt: now,
+          accountId: accountId,
+        );
+
+    Future<void> editNote(WidgetTester tester) async {
+      await tester.enterText(find.widgetWithText(TextField, 'Añadir una nota'), 'nota');
+      await tester.pump();
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('editar un gasto de una cuenta archivada conserva su cuenta', (tester) async {
+      final (movements, _) = await open(
+        tester,
+        [...two, account('old', 'Vieja', archived: true)],
+        editing: lunchOn('old'),
+      );
+      expect(find.text('Cuenta'), findsNothing);
+      await editNote(tester);
+      expect(movements.saved.single.accountId, 'old');
+      expect(movements.saved.single.note, 'nota');
+    });
+
+    testWidgets('editar un gasto de una cuenta en otra moneda conserva su cuenta', (tester) async {
+      final (movements, _) = await open(
+        tester,
+        [...two, account('usd', 'Dólares', currency: 'USD')],
+        editing: lunchOn('usd'),
+      );
+      expect(find.text('Cuenta'), findsNothing, reason: 'su cuenta no es de la moneda del gasto');
+      await editNote(tester);
+      expect(movements.saved.single.accountId, 'usd');
+    });
+
+    testWidgets('un gasto sin cuenta editado sin tocar el selector sigue sin cuenta', (tester) async {
+      final (movements, _) = await open(tester, two, editing: lunchOn(null));
+      expect(find.text('Cuenta'), findsOneWidget);
+      await editNote(tester);
+      expect(movements.saved.single.accountId, isNull);
+    });
+
+    testWidgets('elegir otra cuenta a mano sí cambia la cuenta del gasto', (tester) async {
+      final (movements, _) = await open(tester, two, editing: lunchOn(null));
+      await tester.tap(find.text('BBVA'));
+      await tester.pump();
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      expect(movements.saved.single.accountId, 'bbva');
+    });
+
     testWidgets('a 360 px con varias cuentas de nombre largo no desborda', (tester) async {
       await open(tester, [
         account('default', 'Cuenta sueldo con un nombre larguísimo', isDefault: true),
