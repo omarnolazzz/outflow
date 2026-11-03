@@ -3,13 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/di/core_providers.dart';
 import '../../../core/domain/billing_cycle.dart';
 import '../../subscriptions/presentation/subscription_providers.dart';
+import '../data/hive_account_repository.dart';
 import '../data/hive_category_repository.dart';
 import '../data/hive_movement_repository.dart';
 import '../data/wallet_settings_repository.dart';
+import '../domain/account_balances.dart';
 import '../domain/category.dart';
 import '../domain/charge_movements.dart';
 import '../domain/month_summary.dart';
 import '../domain/movement.dart';
+import '../domain/wallet_account.dart';
 import '../domain/wallet_settings.dart';
 
 final movementRepositoryProvider = Provider<MovementRepository>(
@@ -22,6 +25,33 @@ final categoryRepositoryProvider = Provider<CategoryRepository>(
 
 final walletSettingsRepositoryProvider = Provider<WalletSettingsRepository>(
   (ref) => HiveWalletSettingsRepository(ref.watch(localStoreProvider)),
+);
+
+final accountRepositoryProvider = Provider<AccountRepository>(
+  (ref) => HiveAccountRepository(ref.watch(localStoreProvider)),
+);
+
+/// Todas las cuentas, también las archivadas. Toda lectura de cuentas y saldos
+/// pasa por aquí, así que quien actualiza desde una versión sin cuentas recibe
+/// aquí su "Mi cuenta", en su moneda principal, sin depender de ninguna pantalla
+/// ni estado de sesión. `ensureDefault` es idempotente.
+final accountsProvider = StreamProvider<List<WalletAccount>>((ref) async* {
+  final repo = ref.watch(accountRepositoryProvider);
+  await repo.ensureDefault(ref.read(walletSettingsRepositoryProvider).read().currency);
+  yield* repo.watchAll();
+});
+
+/// Saldo por id de cuenta. Mientras carga no hay saldos, en vez de saldos en 0.
+final accountBalancesProvider = Provider<AsyncValue<Map<String, int>>>((ref) {
+  final accounts = ref.watch(accountsProvider).value;
+  final movements = ref.watch(movementsProvider).value;
+  if (accounts == null || movements == null) return const AsyncLoading();
+  return AsyncData(computeBalances(accounts, movements));
+});
+
+/// La cuenta que reciben los movimientos sin cuenta (null mientras carga).
+final defaultAccountProvider = Provider<WalletAccount?>(
+  (ref) => defaultAccountOf(ref.watch(accountsProvider).value ?? const []),
 );
 
 final movementsProvider = StreamProvider<List<Movement>>(

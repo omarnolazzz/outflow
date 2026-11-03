@@ -79,7 +79,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
 
     final filtered = all.where((m) {
       if (_filter == _Filter.expenses && !m.isExpense) return false;
-      if (_filter == _Filter.income && m.isExpense) return false;
+      if (_filter == _Filter.income && m.kind != MovementKind.income) return false;
       if (_category != null && m.categoryId != _category) return false;
       if (query.isEmpty) return true;
       final cat = categories[m.categoryId]?.name ?? '';
@@ -216,7 +216,8 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                           movement: m,
                           category: categories[m.categoryId],
                           merchant: merchants[subs[m.subscriptionId]?.merchantId],
-                          onTap: () => showMovementSheet(context, editing: m),
+                          // Esa hoja es solo para gastos e ingresos.
+                          onTap: m.isTransferOrAdjustment ? null : () => showMovementSheet(context, editing: m),
                         ),
                       ),
                   ],
@@ -229,7 +230,8 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
     );
   }
 
-  /// Neto del día en la moneda del primer movimiento (solo informativo).
+  /// Neto del día en la moneda del primer movimiento (solo informativo). Solo
+  /// lo que cuenta en la wallet: ni transferencias, ni ajustes, ni suscripciones.
   String _dayTotal(List<Movement> items) {
     final counted = items.where((m) => m.countsInWallet).toList();
     if (counted.isEmpty) return '';

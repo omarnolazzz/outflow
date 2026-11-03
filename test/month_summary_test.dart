@@ -154,6 +154,103 @@ void main() {
     expect(compute([inc(1000, DateTime(2026, 9, 2)), charge]).carriedIn, const Money(100000, 'PEN'));
   });
 
+  group('dinero que se mueve sin ser gasto ni ingreso', () {
+    final base = [inc(1000, DateTime(2026, 10, 2)), exp(100, DateTime(2026, 10, 3))];
+
+    Movement other(MovementKind kind, {String currency = 'PEN', MovementOrigin origin = MovementOrigin.manual}) =>
+        Movement(
+          id: 'x${_seq++}',
+          kind: kind,
+          amount: Money(10000, currency),
+          categoryId: kNoCategoryId,
+          date: DateTime(2026, 10, 4),
+          createdAt: DateTime(2026, 10, 4),
+          origin: origin,
+          accountId: 'A',
+          toAccountId: kind == MovementKind.transfer ? 'B' : null,
+          adjustmentMinor: kind == MovementKind.adjustment ? -800 : null,
+        );
+
+    void expectSame(MonthSummary a, MonthSummary b) {
+      expect(a.income, b.income);
+      expect(a.expense, b.expense);
+      expect(a.carriedIn, b.carriedIn);
+      expect(a.remaining, b.remaining);
+      expect(a.afterPending, b.afterPending);
+      expect(a.expenseByCategory, b.expenseByCategory);
+      expect(a.otherCurrencies, b.otherCurrencies);
+    }
+
+    test('una transferencia no cambia el Resumen', () {
+      expectSame(compute([...base, other(MovementKind.transfer)]), compute(base));
+    });
+
+    test('una transferencia con el otro lado desconocido tampoco, entre o salga', () {
+      Movement unknown(bool incoming) => Movement(
+            id: 'u${_seq++}',
+            kind: MovementKind.transfer,
+            amount: const Money(40000, 'PEN'),
+            categoryId: kNoCategoryId,
+            date: DateTime(2026, 10, 4),
+            createdAt: DateTime(2026, 10, 4),
+            accountId: 'A',
+            transferIncoming: incoming,
+          );
+      expectSame(compute([...base, unknown(true), unknown(false)]), compute(base));
+    });
+
+    test('un ajuste no cambia remaining', () {
+      expectSame(compute([...base, other(MovementKind.adjustment)]), compute(base));
+    });
+
+    test('en otra moneda no aparecen en otherCurrencies', () {
+      final s = compute([
+        ...base,
+        other(MovementKind.transfer, currency: 'USD'),
+        other(MovementKind.adjustment, currency: 'USD'),
+      ]);
+      expect(s.otherCurrencies, isEmpty);
+    });
+
+    test('saldar una deuda (settlement) no es gasto ni ingreso', () {
+      Movement settled(MovementKind kind) => Movement(
+            id: 's${_seq++}',
+            kind: kind,
+            amount: const Money(2500, 'PEN'),
+            categoryId: 'expense_other',
+            date: DateTime(2026, 10, 4),
+            createdAt: DateTime(2026, 10, 4),
+            origin: MovementOrigin.settlement,
+          );
+      expect(settled(MovementKind.income).countsInWallet, isFalse);
+      expectSame(compute([...base, settled(MovementKind.income), settled(MovementKind.expense)]), compute(base));
+    });
+
+    test('gasto con paidMinor 10000 y amount 2500: el Resumen cuenta 2500', () {
+      final s = compute([
+        Movement(
+          id: 'p',
+          kind: MovementKind.expense,
+          amount: const Money(2500, 'PEN'),
+          categoryId: 'food',
+          date: DateTime(2026, 10, 4),
+          createdAt: DateTime(2026, 10, 4),
+          paidMinor: 10000,
+        ),
+      ]);
+      expect(s.expense, const Money(2500, 'PEN'));
+      expect(s.expenseByCategory['food'], const Money(2500, 'PEN'));
+    });
+
+    test('solo cuentan en la wallet los gastos e ingresos corrientes', () {
+      expect(other(MovementKind.transfer).countsInWallet, isFalse);
+      expect(other(MovementKind.adjustment).countsInWallet, isFalse);
+      expect(other(MovementKind.expense, origin: MovementOrigin.capture).countsInWallet, isTrue);
+      expect(other(MovementKind.income, origin: MovementOrigin.statement).countsInWallet, isTrue);
+      expect(other(MovementKind.income, origin: MovementOrigin.initialBalance).countsInWallet, isTrue);
+    });
+  });
+
   test('gasto por categoría', () {
     final s = compute([exp(300, DateTime(2026, 10, 2)), exp(100, DateTime(2026, 10, 3), cat: 'transport')]);
     expect(s.expenseByCategory, {'food': const Money(30000, 'PEN'), 'transport': const Money(10000, 'PEN')});

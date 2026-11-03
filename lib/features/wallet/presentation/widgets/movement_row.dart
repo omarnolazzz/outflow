@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -10,8 +11,9 @@ import '../../domain/category.dart';
 import '../../domain/movement.dart';
 import 'category_icon.dart';
 
-/// Fila de un gasto o ingreso: icono (logo si es de suscripción), concepto,
-/// categoría y el importe con signo (ingresos en verde).
+/// Fila de un movimiento: icono (logo si es de suscripción), concepto, categoría
+/// y el importe con signo (ingresos en verde). Transferencias y ajustes no tienen
+/// categoría ([category] null) y llevan su propio icono.
 class MovementRow extends StatelessWidget {
   const MovementRow({
     super.key,
@@ -33,14 +35,20 @@ class MovementRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final m = movement;
-    final title = m.title.isNotEmpty ? m.title : (category?.name ?? 'Movimiento');
+    // Transferencias y ajustes no tienen categoría: los nombra su tipo.
+    final kindName = switch (m.kind) {
+      MovementKind.transfer => 'Transferencia',
+      MovementKind.adjustment => 'Ajuste de saldo',
+      _ => null,
+    };
+    final title = m.title.isNotEmpty ? m.title : (kindName ?? category?.name ?? 'Movimiento');
     final subtitle = [
-      category?.name ?? '',
+      if (kindName == null) category?.name ?? '' else if (kindName != title) kindName,
       if (showDate) Fmt.dateShort(m.date),
       if (m.provisional) 'previsto',
-      if (!m.countsInWallet) 'no descuenta',
+      if (!m.countsInWallet && !m.isTransferOrAdjustment) 'no descuenta',
     ].where((x) => x.isNotEmpty).join(' · ');
-    final amount = '${m.isExpense ? '−' : '+'}${Fmt.money(m.amount)}';
+    final amount = '${_sign(m)}${Fmt.money(m.amount)}';
 
     return Pressable(
       onTap: onTap,
@@ -52,6 +60,8 @@ class MovementRow extends StatelessWidget {
           children: [
             if (merchant != null)
               MerchantAvatar(logo: merchant!.logo, name: title, size: 40)
+            else if (m.isTransferOrAdjustment)
+              _KindBadge(m.kind == MovementKind.transfer ? LucideIcons.arrowLeftRight : LucideIcons.scale)
             else
               CategoryBadge(category: category),
             const SizedBox(width: 12),
@@ -81,4 +91,27 @@ class MovementRow extends StatelessWidget {
       ),
     );
   }
+
+  /// Una transferencia entre dos cuentas conocidas no tiene signo: no entra ni
+  /// sale dinero. Con el otro lado desconocido, lo lleva según su sentido.
+  static String _sign(Movement m) => switch (m.kind) {
+        MovementKind.expense => '−',
+        MovementKind.income => '+',
+        MovementKind.adjustment => (m.adjustmentMinor ?? 0) < 0 ? '−' : '+',
+        MovementKind.transfer => m.toAccountId != null ? '' : (m.transferIncoming ? '+' : '−'),
+      };
+}
+
+/// Círculo neutro con el icono de una transferencia o un ajuste.
+class _KindBadge extends StatelessWidget {
+  const _KindBadge(this.icon);
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 40,
+        height: 40,
+        decoration: const BoxDecoration(color: AppColors.fill, shape: BoxShape.circle),
+        child: Icon(icon, size: 19, color: AppColors.inkSecondary),
+      );
 }

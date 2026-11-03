@@ -18,6 +18,7 @@ class LocalStore {
   static const settingsBox = 'settings';
   static const movementsBox = 'movements';
   static const categoriesBox = 'categories';
+  static const accountsBox = 'accounts';
 
   static const _keyName = 'outflow.hive.key';
 
@@ -27,13 +28,13 @@ class LocalStore {
   @visibleForTesting
   static Future<LocalStore> openUnencrypted() async {
     final boxes = <String, Box<String>>{};
-    for (final name in const [subscriptionsBox, merchantsBox, settingsBox, movementsBox, categoriesBox]) {
+    for (final name in _names) {
       boxes[name] = await Hive.openBox<String>(name);
     }
     return LocalStore._(boxes);
   }
 
-  static const _names = [subscriptionsBox, merchantsBox, settingsBox, movementsBox, categoriesBox];
+  static const _names = [subscriptionsBox, merchantsBox, settingsBox, movementsBox, categoriesBox, accountsBox];
 
   static Future<LocalStore> open(FlutterSecureStorage secure) async {
     await Hive.initFlutter('outflow');

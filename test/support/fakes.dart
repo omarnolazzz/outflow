@@ -6,9 +6,11 @@ import 'package:outflow/features/friends/domain/shared_expense.dart';
 import 'package:outflow/features/friends/domain/split_movements.dart';
 import 'package:outflow/features/subscriptions/domain/entities/subscription.dart';
 import 'package:outflow/features/subscriptions/domain/subscription_repository.dart';
+import 'package:outflow/features/wallet/data/hive_account_repository.dart';
 import 'package:outflow/features/wallet/data/hive_movement_repository.dart';
 import 'package:outflow/features/wallet/data/wallet_settings_repository.dart';
 import 'package:outflow/features/wallet/domain/movement.dart';
+import 'package:outflow/features/wallet/domain/wallet_account.dart';
 import 'package:outflow/features/wallet/domain/wallet_settings.dart';
 
 /// Ajustes de la wallet en memoria.
@@ -64,6 +66,53 @@ class MemoryMovements implements MovementRepository {
 
   @override
   Stream<List<Movement>> watchAll() async* {
+    yield saved;
+    yield* _c.stream;
+  }
+}
+
+/// Cuentas en memoria, con las mismas reglas que [HiveAccountRepository]. Con
+/// [movements] sabe qué cuentas tienen movimientos (para archivar al borrar).
+class MemoryAccounts implements AccountRepository {
+  MemoryAccounts([List<WalletAccount> initial = const [], this.movements]) : _items = {for (final a in initial) a.id: a};
+  final Map<String, WalletAccount> _items;
+  final MemoryMovements? movements;
+  final _c = StreamController<List<WalletAccount>>.broadcast();
+
+  List<WalletAccount> get saved => sortAccounts(_items.values);
+  void _emit() => _c.add(saved);
+
+  @override
+  Future<void> save(WalletAccount a) async {
+    _items[a.id] = a.isDefault && a.archived ? a.copyWith(archived: false) : a;
+    _emit();
+  }
+
+  @override
+  Future<void> delete(String id) async {
+    final a = _items[id];
+    if (a == null || a.isDefault) return;
+    final used = (movements?.saved ?? const <Movement>[]).any((m) => m.accountId == id || m.toAccountId == id);
+    if (used) {
+      _items[id] = a.copyWith(archived: true);
+    } else {
+      _items.remove(id);
+    }
+    _emit();
+  }
+
+  @override
+  Future<WalletAccount> ensureDefault(String currency) async {
+    final current = defaultAccountOf(saved);
+    if (current != null) return current;
+    final a = newDefaultAccount(currency, DateTime(2026, 10, 1));
+    _items[a.id] = a;
+    _emit();
+    return a;
+  }
+
+  @override
+  Stream<List<WalletAccount>> watchAll() async* {
     yield saved;
     yield* _c.stream;
   }

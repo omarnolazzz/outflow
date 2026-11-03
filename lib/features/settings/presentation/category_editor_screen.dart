@@ -56,7 +56,7 @@ class _CategoryEditorScreenState extends ConsumerState<CategoryEditorScreen> {
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
         children: [
           SegmentedControl<MovementKind>(
-            values: MovementKind.values,
+            values: const [MovementKind.expense, MovementKind.income],
             selected: _kind,
             label: (k) => k == MovementKind.expense ? 'Gastos' : 'Ingresos',
             onChanged: (k) => setState(() => _kind = k),

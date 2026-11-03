@@ -32,6 +32,7 @@ void main() {
     await store.write(LocalStore.movementsBox, 'm1', {'id': 'm1'});
     await store.write(LocalStore.subscriptionsBox, 's1', {'id': 's1'});
     await store.write(LocalStore.categoriesBox, 'mia', {'id': 'mia'});
+    await store.write(LocalStore.accountsBox, 'bcp', {'id': 'bcp'});
     final settings = MemorySettings(const WalletSettings(onboardingDone: true, currency: 'USD', ownerUid: 'u1'));
     final social = MemorySocial();
     final c = ProviderContainer(overrides: [
@@ -58,6 +59,11 @@ void main() {
     expect(settings.value.onboardingDone, isFalse);
     expect(settings.value.currency, 'PEN');
     expect(settings.value.ownerUid, 'u1', reason: 'la wallet sigue siendo de la misma cuenta');
+    final account = store.readAll(LocalStore.accountsBox).single;
+    expect(account['name'], 'Mi cuenta', reason: 'queda solo la cuenta por defecto');
+    expect(account['currency'], 'PEN', reason: 'la moneda por defecto de la wallet, no la anterior');
+    expect(account['initialMinor'], 0);
+    expect(account['isDefault'], isTrue);
     expect(social.forgetCalls, 1);
     final s = c.read(sessionControllerProvider);
     expect(s, isA<NeedsOnboarding>());

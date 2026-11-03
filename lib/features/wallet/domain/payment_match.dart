@@ -19,6 +19,8 @@ List<Movement> findMatchingPayments({
           x.origin != MovementOrigin.subscription &&
           // Tu parte de un gasto compartido nunca es el pago que se está dividiendo.
           x.origin != MovementOrigin.split &&
+          // Saldar una deuda tampoco es un pago con ticket.
+          x.origin != MovementOrigin.settlement &&
           x.date.difference(date).abs() <= window &&
           ((x.amount.minor - amountMinor).abs() <= tolerance ||
               (m.isNotEmpty && normalizeMerchant(x.title) == m)))

@@ -72,6 +72,11 @@ SplitMovementChanges reconcileSplitMovements({
           : note,
       origin: MovementOrigin.split,
       createdAt: current?.createdAt ?? e.date,
+      // Lo que el usuario o la captura ataron a este pago no sale del reparto.
+      accountId: current?.accountId,
+      paidMinor: current?.paidMinor,
+      needsReview: current?.needsReview ?? false,
+      externalRef: current?.externalRef,
     );
     if (current == null ||
         current.toJson().toString() != desired.toJson().toString()) {

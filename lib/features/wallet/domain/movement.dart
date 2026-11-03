@@ -2,13 +2,31 @@ import 'package:meta/meta.dart';
 
 import '../../../core/domain/money.dart';
 
-enum MovementKind { expense, income }
+/// Los tipos se guardan por nombre: no se renombran.
+enum MovementKind { expense, income, transfer, adjustment }
 
-/// De dónde salió un movimiento. Los tres últimos se reservan para las fases
-/// 2–4 (atajo de Apple Pay, escáner de tickets, gastos divididos).
-enum MovementOrigin { manual, subscription, initialBalance, applePay, ticket, split, googlePay }
+/// De dónde salió un movimiento (se guarda por nombre). [settlement] es saldar
+/// una deuda con un amigo; [capture], un aviso leído por la captura automática;
+/// [statement], una fila de un estado de cuenta importado.
+enum MovementOrigin {
+  manual,
+  subscription,
+  initialBalance,
+  applePay,
+  ticket,
+  split,
+  googlePay,
+  settlement,
+  capture,
+  statement,
+}
 
-/// Un gasto o un ingreso. El importe siempre es positivo; el signo lo da [kind].
+/// `categoryId` de lo que no tiene categoría (transferencias y ajustes): no
+/// corresponde a ninguna, así que al buscarla el resultado es null.
+const kNoCategoryId = '';
+
+/// Un gasto, un ingreso, una transferencia entre cuentas propias o un ajuste de
+/// saldo. El importe siempre es positivo; el signo lo da [kind].
 @immutable
 class Movement {
   const Movement({
@@ -24,6 +42,14 @@ class Movement {
     this.subscriptionId,
     this.provisional = false,
     this.userEdited = false,
+    this.accountId,
+    this.toAccountId,
+    this.transferIncoming = false,
+    this.receivedMinor,
+    this.adjustmentMinor,
+    this.paidMinor,
+    this.needsReview = false,
+    this.externalRef,
   });
 
   final String id;
@@ -47,14 +73,52 @@ class Movement {
   final bool userEdited;
   final DateTime createdAt;
 
+  /// Cuenta del movimiento (el origen, en una transferencia). Null = la cuenta
+  /// por defecto: así se leen los movimientos anteriores a las cuentas.
+  final String? accountId;
+
+  /// Cuenta destino de una transferencia.
+  final String? toAccountId;
+
+  /// Transferencia cuyo otro lado es una cuenta propia aún no registrada
+  /// ([toAccountId] null): true = entra en [accountId], false = sale.
+  final bool transferIncoming;
+
+  /// Lo que recibe el destino de una transferencia, en su moneda (null = [amount]).
+  final int? receivedMinor;
+
+  /// Diferencia con signo de un ajuste de saldo.
+  final int? adjustmentMinor;
+
+  /// Lo que salió de verdad de la cuenta en un gasto (null = [amount]): pagaste
+  /// 100 entre 4 → [amount] es tu parte (25) y aquí van los 100.
+  final int? paidMinor;
+
+  /// Creado sin confirmar: el usuario debería revisarlo.
+  final bool needsReview;
+
+  /// Referencia de la operación en el banco o la entidad de origen.
+  final String? externalRef;
+
   bool get isExpense => kind == MovementKind.expense;
 
-  /// Los cobros de suscripción son informativos: se ven en el historial, pero
-  /// el usuario los paga por su cuenta, así que no descuentan de la wallet.
-  bool get countsInWallet => origin != MovementOrigin.subscription;
+  /// Mueve dinero entre cuentas o corrige un saldo: ni gasto ni ingreso.
+  bool get isTransferOrAdjustment => kind == MovementKind.transfer || kind == MovementKind.adjustment;
 
-  /// Importe con signo en unidades menores (gastos negativos).
-  int get signedMinor => isExpense ? -amount.minor : amount.minor;
+  /// Solo gastos e ingresos cuentan en "Te queda" y el Resumen. Los cobros de
+  /// suscripción son informativos: se ven en el historial, pero el usuario los
+  /// paga por su cuenta. Saldar una deuda mueve una cuenta, no la wallet.
+  bool get countsInWallet =>
+      !isTransferOrAdjustment && origin != MovementOrigin.subscription && origin != MovementOrigin.settlement;
+
+  /// Importe con signo en unidades menores (gastos negativos). Una transferencia
+  /// es neutra: lo que sale de una cuenta entra en otra.
+  int get signedMinor => switch (kind) {
+        MovementKind.expense => -amount.minor,
+        MovementKind.income => amount.minor,
+        MovementKind.adjustment => adjustmentMinor ?? 0,
+        MovementKind.transfer => 0,
+      };
 
   Movement copyWith({
     MovementKind? kind,
@@ -65,6 +129,14 @@ class Movement {
     String? note,
     bool? provisional,
     bool? userEdited,
+    String? accountId,
+    String? toAccountId,
+    bool? transferIncoming,
+    int? receivedMinor,
+    int? adjustmentMinor,
+    int? paidMinor,
+    bool? needsReview,
+    String? externalRef,
   }) =>
       Movement(
         id: id,
@@ -79,6 +151,14 @@ class Movement {
         provisional: provisional ?? this.provisional,
         userEdited: userEdited ?? this.userEdited,
         createdAt: createdAt,
+        accountId: accountId ?? this.accountId,
+        toAccountId: toAccountId ?? this.toAccountId,
+        transferIncoming: transferIncoming ?? this.transferIncoming,
+        receivedMinor: receivedMinor ?? this.receivedMinor,
+        adjustmentMinor: adjustmentMinor ?? this.adjustmentMinor,
+        paidMinor: paidMinor ?? this.paidMinor,
+        needsReview: needsReview ?? this.needsReview,
+        externalRef: externalRef ?? this.externalRef,
       );
 
   Map<String, Object?> toJson() => {
@@ -94,6 +174,14 @@ class Movement {
         'provisional': provisional,
         'userEdited': userEdited,
         'createdAt': createdAt.toIso8601String(),
+        'accountId': accountId,
+        'toAccountId': toAccountId,
+        'transferIncoming': transferIncoming,
+        'receivedMinor': receivedMinor,
+        'adjustmentMinor': adjustmentMinor,
+        'paidMinor': paidMinor,
+        'needsReview': needsReview,
+        'externalRef': externalRef,
       };
 
   factory Movement.fromJson(Map<String, Object?> json) {
@@ -103,7 +191,7 @@ class Movement {
       id: json['id'] as String,
       kind: MovementKind.values.byName(json['kind'] as String),
       amount: Money.fromJson((json['amount'] as Map).cast<String, Object?>()),
-      categoryId: json['categoryId'] as String,
+      categoryId: json['categoryId'] as String? ?? kNoCategoryId,
       date: date,
       title: json['title'] as String? ?? '',
       note: json['note'] as String? ?? '',
@@ -112,6 +200,14 @@ class Movement {
       provisional: json['provisional'] as bool? ?? false,
       userEdited: json['userEdited'] as bool? ?? false,
       createdAt: created == null ? date : DateTime.parse(created),
+      accountId: json['accountId'] as String?,
+      toAccountId: json['toAccountId'] as String?,
+      transferIncoming: json['transferIncoming'] as bool? ?? false,
+      receivedMinor: (json['receivedMinor'] as num?)?.toInt(),
+      adjustmentMinor: (json['adjustmentMinor'] as num?)?.toInt(),
+      paidMinor: (json['paidMinor'] as num?)?.toInt(),
+      needsReview: json['needsReview'] as bool? ?? false,
+      externalRef: json['externalRef'] as String?,
     );
   }
 }

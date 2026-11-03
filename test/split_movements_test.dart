@@ -56,6 +56,23 @@ void main() {
     expect(m.note, startsWith('Dividido con Ana, Javi · total '));
   });
 
+  test('conciliar no le quita a tu parte su cuenta ni lo que salió de verdad', () {
+    final current = run([expense()], const []).upsert.single.copyWith(
+          accountId: 'A',
+          paidMinor: 10000,
+          needsReview: true,
+          externalRef: 'r',
+        );
+    expect(run([expense()], [current]).upsert, isEmpty, reason: 'sin cambios: no reescribe');
+
+    final changed = run([expense(title: 'Cena de grupo')], [current]).upsert.single;
+    expect(changed.title, 'Cena de grupo');
+    expect(changed.accountId, 'A');
+    expect(changed.paidMinor, 10000);
+    expect(changed.needsReview, isTrue);
+    expect(changed.externalRef, 'r');
+  });
+
   test('un nombre vacío usa la parte local del correo, o "Amigo"', () {
     final e = expense().copyWith(people: {
       'me': me,

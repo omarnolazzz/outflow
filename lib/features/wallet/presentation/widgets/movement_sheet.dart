@@ -247,7 +247,7 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
           if (!_isCharge && !_isSplit)
             Entrance(
               child: SegmentedControl<MovementKind>(
-                values: MovementKind.values,
+                values: const [MovementKind.expense, MovementKind.income],
                 selected: _kind,
                 label: (k) => k == MovementKind.expense ? 'Gasto' : 'Ingreso',
                 onChanged: (k) => setState(() {

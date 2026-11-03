@@ -45,7 +45,12 @@ String? suggestCategory({
   Movement? best;
   var bestScore = 0;
   for (final x in history) {
-    if (!x.isExpense || x.origin == MovementOrigin.subscription || !valid.contains(x.categoryId)) continue;
+    if (!x.isExpense ||
+        x.origin == MovementOrigin.subscription ||
+        x.origin == MovementOrigin.settlement ||
+        !valid.contains(x.categoryId)) {
+      continue;
+    }
     final other = normalizeMerchant(x.title).split(' ');
     var score = 0;
     while (score < words.length && score < other.length && words[score] == other[score]) {
