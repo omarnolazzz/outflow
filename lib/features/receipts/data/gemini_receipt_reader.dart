@@ -57,6 +57,8 @@ class GeminiReceiptReader implements ReceiptReader {
   @override
   Future<ReceiptData> read(String text, {required DateTime now, required String fallbackCurrency}) async {
     final local = parseReceiptHeuristic(text, now: now, fallbackCurrency: fallbackCurrency);
+    // Nombres y cuentas de una transferencia no salen del teléfono: ni una petición.
+    if (local.isConstancia) return local;
     try {
       final uri = Uri.https('generativelanguage.googleapis.com', '/v1beta/models/$model:generateContent', {'key': apiKey});
       final body = jsonEncode({

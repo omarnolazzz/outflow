@@ -75,6 +75,31 @@ void constanciaTests() {
       }
     });
 
+    test('el texto suelto "Yape" o "Plin" en un ticket no lo vuelve constancia', () {
+      for (final pay in ['Pago: Yape', 'Tarjeta/Plin']) {
+        final r = parseReceiptHeuristic(
+          'BODEGA SAN MARTIN\nFECHA: 08/10/2026\n2 GASEOSA 7.00\n$pay\nTOTAL S/ 45.90',
+          now: now,
+          fallbackCurrency: 'PEN',
+        );
+        expect(r.isConstancia, isFalse, reason: pay);
+        expect(r.merchant, 'BODEGA SAN MARTIN', reason: pay);
+        expect(r.operationId, isNull, reason: pay);
+        expect(r.totalMinor, 4590, reason: pay);
+      }
+    });
+
+    test('"Referencia: 123" sin palabra de transferencia no es constancia', () {
+      final r = parseReceiptHeuristic('TIENDA X\nReferencia: 123\nTOTAL 10,00 EUR', now: now, fallbackCurrency: 'EUR');
+      expect(r.isConstancia, isFalse);
+      expect(r.operationId, isNull);
+    });
+
+    test('una constancia de Plin con forma real sí lo es', () {
+      final r = parseReceiptHeuristic(plinConstancia, now: now, fallbackCurrency: 'PEN');
+      expect(r.isConstancia, isTrue);
+    });
+
     test('un ticket normal no tiene operationId aunque traiga un N°', () {
       for (final t in [taberna, bodega]) {
         final r = parseReceiptHeuristic(t, now: now, fallbackCurrency: 'PEN');

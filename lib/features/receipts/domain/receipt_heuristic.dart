@@ -21,8 +21,8 @@ final _decimalAmount = RegExp(r'\d{1,3}(?:[.,]\d{3})*[.,]\d{2}\b');
 final _itemLine = RegExp(r'^(\d{1,3})\s+(.+?)\s+(\d+[.,]\d{2})\s*(?:EUR|PEN|USD|S/|€|\$)?$');
 
 /// Constancia de una transferencia (Plin, Yape…): la pantalla que deja el pago.
-final _constanciaWords = RegExp(r'\b(?:CONSTANCIA|PLIN|YAPE|YAPEASTE|PLINEASTE)\b');
-final _operationLabel = RegExp(r'(?:N[°º]|NRO\.?|NUMERO|NÚMERO|C[OÓ]DIGO)\s*(?:DE\s+)?OPERACI[OÓ]N');
+final _constanciaWord = RegExp(r'\bCONSTANCIA\b');
+final _transferWords = RegExp(r'\b(?:PLIN|YAPE|YAPEASTE|PLINEASTE|TRANSFERENCIA|ENV[IÍ]O|OPERACI[OÓ]N EXITOSA)\b');
 final _recipientLine = RegExp(r'^(?:PARA|DESTINO|DESTINATARIO|NOMBRE)(?:\s*:\s*|\s+)(.+)$|^A\s*:\s*(.+)$', caseSensitive: false);
 final _prefixedAmount = RegExp(r'(?:S/\.?|US\$|\$|€)\s*(\d[\d.,]*)');
 
@@ -64,25 +64,28 @@ ReceiptData parseReceiptHeuristic(String text, {required DateTime now, required 
 
   // Una constancia no tiene línea TOTAL: el importe es el que lleva moneda, y
   // quien cobra es el destinatario, no la primera línea de texto.
-  final isConstancia = _constanciaWords.hasMatch(upper) || _operationLabel.hasMatch(upper);
   String? recipient;
-  if (isConstancia) {
-    if (total == null) {
-      final labelled = lines.where((l) => RegExp(r'\b(?:MONTO|IMPORTE)\b').hasMatch(l.toUpperCase()));
-      for (final l in [...labelled, ...lines]) {
-        final m = _prefixedAmount.firstMatch(l.toUpperCase());
-        final amount = m == null ? null : parseAmountMinor(m.group(1)!);
-        if (amount != null && amount > 0) {
-          total = amount;
-          break;
-        }
-      }
+  for (final l in lines) {
+    final m = _recipientLine.firstMatch(l);
+    final name = (m?.group(1) ?? m?.group(2))?.trim();
+    if (name != null && RegExp(r'[A-Za-zÁÉÍÓÚÑáéíóúñ]{2}').hasMatch(name)) {
+      recipient = name;
+      break;
     }
-    for (final l in lines) {
-      final m = _recipientLine.firstMatch(l);
-      final name = (m?.group(1) ?? m?.group(2))?.trim();
-      if (name != null && RegExp(r'[A-Za-zÁÉÍÓÚÑáéíóúñ]{2}').hasMatch(name)) {
-        recipient = name;
+  }
+  // Es constancia con la palabra "Constancia", o con un número de operación
+  // etiquetado junto a una palabra de transferencia o a un destinatario. Un "Pago:
+  // Yape" suelto en un ticket no basta.
+  final operationId = labelledOperationId(text);
+  final isConstancia = _constanciaWord.hasMatch(upper) ||
+      (operationId != null && (_transferWords.hasMatch(upper) || recipient != null));
+  if (isConstancia && total == null) {
+    final labelled = lines.where((l) => RegExp(r'\b(?:MONTO|IMPORTE)\b').hasMatch(l.toUpperCase()));
+    for (final l in [...labelled, ...lines]) {
+      final m = _prefixedAmount.firstMatch(l.toUpperCase());
+      final amount = m == null ? null : parseAmountMinor(m.group(1)!);
+      if (amount != null && amount > 0) {
+        total = amount;
         break;
       }
     }
@@ -120,7 +123,8 @@ ReceiptData parseReceiptHeuristic(String text, {required DateTime now, required 
     currency: currency,
     items: items,
     // Solo las constancias: el "N°" de un ticket no identifica ninguna operación.
-    operationId: isConstancia ? labelledOperationId(text) : null,
+    operationId: isConstancia ? operationId : null,
+    isConstancia: isConstancia,
   );
 }
 

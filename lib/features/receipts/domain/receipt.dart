@@ -32,6 +32,7 @@ class ReceiptData {
     this.items = const [],
     this.fromAi = false,
     this.operationId,
+    this.isConstancia = false,
   });
 
   final String? merchant;
@@ -46,6 +47,9 @@ class ReceiptData {
   /// Número de operación de una constancia (Plin, Yape, transferencia). Los tickets no lo tienen.
   final String? operationId;
 
+  /// Es la constancia de una transferencia: su texto tiene nombres y cuentas y no sale del teléfono.
+  final bool isConstancia;
+
   /// Rellena lo que falte con [fallback].
   ReceiptData merge(ReceiptData fallback) => ReceiptData(
         merchant: (merchant?.trim().isNotEmpty ?? false) ? merchant : fallback.merchant,
@@ -55,5 +59,6 @@ class ReceiptData {
         items: items.isNotEmpty ? items : fallback.items,
         fromAi: fromAi,
         operationId: operationId ?? fallback.operationId,
+        isConstancia: isConstancia || fallback.isConstancia,
       );
 }

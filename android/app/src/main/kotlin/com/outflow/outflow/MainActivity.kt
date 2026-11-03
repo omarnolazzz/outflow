@@ -97,6 +97,7 @@ class MainActivity : FlutterFragmentActivity() {
     // Con la app ya abierta (launchMode singleTop) la imagen llega aquí.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         val share = readShare(intent) ?: return
         val path = share.getOrNull()
         if (path != null) shareChannel?.invokeMethod("image", path) else shareChannel?.invokeMethod("failed", null)
@@ -108,17 +109,25 @@ class MainActivity : FlutterFragmentActivity() {
         // Al reabrir desde recientes Android repite el intent original: esa imagen ya se leyó.
         if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return null
         return runCatching {
-            // Restos de una imagen anterior que no llegó a leerse.
-            cacheDir.listFiles { f -> f.name.startsWith("compartida_") }?.forEach { it.delete() }
+            // Restos de una copia vieja que nadie leyó (una reciente puede estar en uso).
+            val stale = System.currentTimeMillis() - 60 * 60 * 1000
+            cacheDir.listFiles { f -> f.name.startsWith("compartida_") && f.lastModified() < stale }?.forEach { it.delete() }
             @Suppress("DEPRECATION")
             val uri = (if (Build.VERSION.SDK_INT >= 33) {
                 intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
             } else {
                 intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
             }) ?: throw IllegalStateException("Sin imagen")
-            val out = File(cacheDir, "compartida_${System.currentTimeMillis()}.jpg")
-            val input = contentResolver.openInputStream(uri) ?: throw IllegalStateException("No se pudo abrir")
-            input.use { src -> out.outputStream().use { dst -> src.copyTo(dst) } }
+            val out = File(cacheDir, "compartida_${java.util.UUID.randomUUID()}.jpg")
+            try {
+                val input = contentResolver.openInputStream(uri) ?: throw IllegalStateException("No se pudo abrir")
+                input.use { src -> out.outputStream().use { dst -> src.copyTo(dst) } }
+            } catch (e: Throwable) {
+                out.delete() // no se deja una copia a medias
+                throw e
+            }
+            // Ya consumida: recrear la actividad o girar la pantalla no la vuelve a leer.
+            intent.action = Intent.ACTION_MAIN
             out.absolutePath
         }
     }

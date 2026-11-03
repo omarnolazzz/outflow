@@ -24,6 +24,32 @@ void main() {
   reviewFixes();
   final now = DateTime(2026, 10, 22);
 
+  test('una constancia no sale del teléfono: cero peticiones y datos locales', () async {
+    var calls = 0;
+    final client = MockClient((req) async {
+      calls++;
+      return http.Response('{}', 200);
+    });
+    const constancia = 'Constancia de operación\nPlin\nS/ 35.00\nPara: Marta Ejemplo Quispe\nFecha: 20/10/2026\nNro. de operación: 87654321';
+    final r = await GeminiReceiptReader(client, apiKey: 'k', model: 'm').read(constancia, now: now, fallbackCurrency: 'PEN');
+    expect(calls, 0);
+    expect(r.fromAi, isFalse);
+    expect(r.totalMinor, 3500);
+    expect(r.merchant, 'Marta Ejemplo Quispe');
+    expect(r.date, DateTime(2026, 10, 20));
+    expect(r.operationId, '87654321');
+  });
+
+  test('un ticket normal sigue llamando a Gemini', () async {
+    var calls = 0;
+    final client = MockClient((req) async {
+      calls++;
+      return http.Response(geminiReply({'merchant': 'X', 'total': 45.9}), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+    });
+    await GeminiReceiptReader(client, apiKey: 'k', model: 'm').read(ticket, now: now, fallbackCurrency: 'PEN');
+    expect(calls, 1);
+  });
+
   test('respuesta válida: datos de la IA; la petición lleva el texto y ninguna imagen', () async {
     late http.Request sent;
     final client = MockClient((req) async {

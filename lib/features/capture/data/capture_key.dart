@@ -32,9 +32,16 @@ class CaptureKeyStore {
   final FlutterSecureStorage _secure;
   String? _cached;
 
-  Future<String> key() async {
+  Future<String>? _loading;
+
+  /// Una sola carga a la vez: llamadas simultáneas comparten la misma clave.
+  Future<String> key() {
     final cached = _cached;
-    if (cached != null) return cached;
+    if (cached != null) return Future.value(cached);
+    return _loading ??= _load().whenComplete(() => _loading = null);
+  }
+
+  Future<String> _load() async {
     String? stored;
     try {
       stored = await _secure.read(key: storageKey);
@@ -54,6 +61,7 @@ class CaptureKeyStore {
   /// Olvida la clave: la siguiente será otra y el atajo viejo deja de valer.
   Future<void> reset() async {
     _cached = null;
+    _loading = null;
     try {
       await _secure.delete(key: storageKey);
     } catch (_) {

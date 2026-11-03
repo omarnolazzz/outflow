@@ -47,6 +47,7 @@ class _Runner implements CaptureRunner {
 }
 
 void main() {
+  keyConcurrencyTests();
   final now = DateTime(2026, 10, 22, 13);
   const key = 'k-secreta-123';
   Uri link({String? clave = key, String fuente = 'Scotiabank', String texto = 'Consumo de S/ 10.00'}) => Uri(
@@ -174,5 +175,15 @@ void main() {
     expect(parsed.amountMinor, 4550);
     expect(parsed.direction, CaptureDirection.out);
     expect(parsed.operationId, isNotNull);
+  });
+}
+
+void keyConcurrencyTests() {
+  test('llamadas simultáneas a key() comparten una sola clave', () async {
+    final secure = _Secure();
+    final store = CaptureKeyStore(secure);
+    final keys = await Future.wait([store.key(), store.key(), store.key()]);
+    expect(keys.toSet(), hasLength(1));
+    expect(secure.values['outflow.capture.key'], keys.first);
   });
 }
