@@ -4,29 +4,44 @@ import android.content.Context
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
+import java.text.Normalizer
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import org.json.JSONObject
 
-/** ¿El texto parece hablar de dinero? Un importe con moneda, nada más. */
+/**
+ * ¿El texto podría hablar de dinero? Filtro amplio a propósito: Dart tiene la última
+ * palabra, aquí solo se descarta lo que claramente no lo es. Pide un dígito y una moneda
+ * (símbolo, código o palabra) o una palabra de operación. Sin acentos ni mayúsculas.
+ */
 object CaptureFilter {
-    private val amountRegex = Regex(
-        """(S/\.?|PEN|US\$|USD|\$|€|EUR)\s?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?|\d{1,3}(?:[.,]\d{3})*[.,]\d{2}\s?(PEN|USD|EUR|soles)""",
-        RegexOption.IGNORE_CASE,
+    private val digit = Regex("""\d""")
+    private val currency = Regex(
+        """s/|\$|€|£|\b(?:soles?|dolar(?:es)?|euros?|pen|usd|eur|mxn|cop|ars|clp|gbp|brl)\b""",
+    )
+    private val operation = Regex(
+        """\b(?:monto|importe|total|pagaste|enviaste|yapeaste|plineaste|recibiste|transferiste|compraste|consumo|cargo|abono)\b""",
     )
 
-    fun looksLikeMoney(text: String): Boolean = amountRegex.containsMatchIn(text)
+    private fun plain(text: String): String =
+        Normalizer.normalize(text, Normalizer.Form.NFD).replace(Regex("""\p{Mn}+"""), "").lowercase(Locale.ROOT)
+
+    fun looksLikeMoney(text: String): Boolean {
+        if (!digit.containsMatchIn(text)) return false
+        val t = plain(text)
+        return currency.containsMatchIn(t) || operation.containsMatchIn(t)
+    }
 }
 
-/** Ventana de claves recientes: la misma notificación re-publicada no se guarda dos veces. */
+/** Ventana de claves recientes: solo se omite la misma entrega exacta (clave, texto y hora). */
 class RecentKeys(private val capacity: Int = 200) {
     private val seen = LinkedHashSet<String>()
 
     @Synchronized
-    fun firstTime(key: String, text: String): Boolean {
-        val id = "$key|${text.hashCode()}"
+    fun firstTime(key: String, text: String, postTime: Long): Boolean {
+        val id = "$key|$postTime|${text.hashCode()}"
         if (!seen.add(id)) return false
         if (seen.size > capacity) seen.remove(seen.first())
         return true

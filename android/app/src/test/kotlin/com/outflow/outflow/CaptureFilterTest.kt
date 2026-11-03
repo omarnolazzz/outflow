@@ -22,16 +22,40 @@ class CaptureFilterTest {
     }
 
     @Test
+    fun filtroAmplioDejaLaDecisionADart() {
+        val positivos = listOf(
+            "Yapeaste 10 soles", "Pagaste 25 soles", "50 PEN", "10 USD", "Monto: 25.00",
+            "Importe 25.00", "Pagaste 45.50", "Te enviaron £ 5", "Compra R\$ 20", "Cargo de 12 EUR",
+            "PAGASTE 3", "Consumo 100", "Recibiste 20 dólares", "Recibiste 20 DOLARES", "Total 9,99",
+            "Abono de 15 MXN", "Plineaste 8 soles",
+        )
+        for (t in positivos) assertTrue(t, CaptureFilter.looksLikeMoney(t))
+        val negativos = listOf(
+            "Tienes 3 mensajes", "Tu pedido llega en 10 minutos", "Pagaste", "Monto pendiente",
+            "Hola", "Solo quedan 3 plazas",
+        )
+        for (t in negativos) assertFalse(t, CaptureFilter.looksLikeMoney(t))
+    }
+
+    @Test
+    fun mismoTextoConOtraHoraEsOtroEvento() {
+        val recent = RecentKeys()
+        assertTrue(recent.firstTime("k", "Pagaste S/ 1", 100L))
+        assertFalse(recent.firstTime("k", "Pagaste S/ 1", 100L))
+        assertTrue(recent.firstTime("k", "Pagaste S/ 1", 200L))
+    }
+
+    @Test
     fun noRepiteLaMismaNotificacion() {
         val recent = RecentKeys(capacity = 2)
-        assertTrue(recent.firstTime("k1", "Pagaste S/ 1"))
-        assertFalse(recent.firstTime("k1", "Pagaste S/ 1"))
+        assertTrue(recent.firstTime("k1", "Pagaste S/ 1", 1L))
+        assertFalse(recent.firstTime("k1", "Pagaste S/ 1", 1L))
         // Misma clave con otro pago: es otra operación.
-        assertTrue(recent.firstTime("k1", "Pagaste S/ 2"))
-        assertTrue(recent.firstTime("k2", "x"))
-        assertTrue(recent.firstTime("k3", "y"))
+        assertTrue(recent.firstTime("k1", "Pagaste S/ 2", 1L))
+        assertTrue(recent.firstTime("k2", "x", 1L))
+        assertTrue(recent.firstTime("k3", "y", 1L))
         // k1 ya salió de la ventana.
-        assertTrue(recent.firstTime("k1", "Pagaste S/ 2"))
+        assertTrue(recent.firstTime("k1", "Pagaste S/ 2", 1L))
     }
 
     @Test
