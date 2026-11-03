@@ -55,7 +55,7 @@ class HiveAccountRepository implements AccountRepository {
     final current = defaultAccountOf(_all());
     if (current != null) return current;
     // Id fijo: si dos llamadas llegan aquí, escriben el mismo documento.
-    final account = newDefaultAccount(currency, DateTime.now());
+    final account = newDefaultAccount(currency);
     await _store.write(_box, account.id, account.toJson());
     return account;
   }

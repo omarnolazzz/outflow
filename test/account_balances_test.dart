@@ -52,14 +52,16 @@ Movement mv(
   int? paid,
   MovementOrigin origin = MovementOrigin.manual,
   String title = '',
+  DateTime? date,
+  DateTime? createdAt,
 }) =>
     Movement(
       id: 'm${_seq++}',
       kind: kind,
       amount: Money(minor, currency),
       categoryId: kind == MovementKind.income ? 'salary' : 'food',
-      date: _day,
-      createdAt: _day,
+      date: date ?? _day,
+      createdAt: createdAt ?? date ?? _day,
       title: title,
       origin: origin,
       accountId: account,
@@ -191,6 +193,115 @@ void main() {
     });
   });
 
+  group('initialMinor es el saldo en initialDate', () {
+    final start = DateTime(2026, 10, 15, 12);
+    final opened = acc('A', isDefault: true, initial: 100000).copyWith(initialDate: start);
+
+    test('un gasto anterior no cambia el saldo', () {
+      final older = mv(MovementKind.expense, 5000, date: start.subtract(const Duration(seconds: 1)));
+      expect(computeBalances([opened], [older]), {'A': 100000});
+    });
+
+    test('una fila justo en initialDate cuenta', () {
+      expect(computeBalances([opened], [mv(MovementKind.expense, 5000, date: start)]), {'A': 95000});
+    });
+
+    test('se comparan instantes, no días: el mismo día pero antes no cuenta', () {
+      final morning = mv(MovementKind.expense, 5000, date: DateTime(2026, 10, 15, 8));
+      final evening = mv(MovementKind.expense, 700, date: DateTime(2026, 10, 15, 20));
+      expect(computeBalances([opened], [morning, evening]), {'A': 99300});
+    });
+
+    test('una transferencia entre los dos initialDate solo mueve el lado que corresponde', () {
+      final early = acc('B').copyWith(initialDate: DateTime(2026, 10, 1));
+      final late = acc('C').copyWith(initialDate: DateTime(2026, 10, 20));
+      final between = DateTime(2026, 10, 10);
+      final outOfEarly = mv(MovementKind.transfer, 400, account: 'B', to: 'C', date: between);
+      final outOfLate = mv(MovementKind.transfer, 900, account: 'C', to: 'B', date: between);
+      expect(computeBalances([early, late], [outOfEarly]), {'B': -400, 'C': 0});
+      expect(computeBalances([early, late], [outOfLate]), {'B': 900, 'C': 0});
+    });
+
+    test('la cuenta migrada conserva las filas antiguas', () {
+      final migrated = newDefaultAccount('PEN');
+      expect(migrated.initialDate, DateTime.fromMillisecondsSinceEpoch(0));
+      expect(
+        computeBalances([migrated], [mv(MovementKind.income, 100000, date: DateTime(2020, 1, 1))]),
+        {migrated.id: 100000},
+      );
+    });
+  });
+
+  group('un ajuste es un punto de control', () {
+    final today = DateTime(2026, 10, 20, 9);
+    final lastMonth = DateTime(2026, 9, 20);
+    final later = today.add(const Duration(hours: 1));
+    final start = acc('A', isDefault: true, initial: 5000).copyWith(initialDate: DateTime(2026, 1, 1));
+    final adjust = makeAdjustment(account: start, currentMinor: 5000, realMinor: 4200, now: today)!;
+
+    test('un gasto de antes apuntado después ya estaba en el saldo real', () {
+      final backdated = mv(MovementKind.expense, 1000, date: lastMonth, createdAt: later);
+      expect(computeBalances([start], [adjust, backdated]), {'A': 4200});
+    });
+
+    test('un gasto posterior al ajuste lo mueve', () {
+      final after = mv(MovementKind.expense, 1000, date: later, createdAt: later);
+      expect(computeBalances([start], [adjust, after]), {'A': 3200});
+    });
+
+    test('un gasto de antes apuntado antes sigue contando: la diferencia ya lo tiene en cuenta', () {
+      final known = mv(MovementKind.expense, 1000, date: lastMonth, createdAt: lastMonth);
+      final current = computeBalances([start], [known])['A']!;
+      expect(current, 4000);
+      final fix = makeAdjustment(account: start, currentMinor: current, realMinor: 4200, now: today)!;
+      expect(fix.adjustmentMinor, 200);
+      expect(computeBalances([start], [known, fix]), {'A': 4200});
+    });
+
+    test('los ajustes siempre cuentan, también uno anterior apuntado después', () {
+      final older = mv(
+        MovementKind.adjustment,
+        300,
+        account: 'A',
+        adjustment: -300,
+        date: lastMonth,
+        createdAt: later,
+      );
+      expect(computeBalances([start], [adjust, older]), {'A': 3900});
+    });
+
+    test('por cuenta: un ajuste en otra cuenta no frena este movimiento', () {
+      final other = acc('B');
+      final elsewhere = makeAdjustment(account: other, currentMinor: 0, realMinor: 50, now: today)!;
+      final backdated = mv(MovementKind.expense, 1000, date: lastMonth, createdAt: later);
+      expect(computeBalances([start, other], [elsewhere, backdated]), {'A': 4000, 'B': 50});
+    });
+
+    test('una transferencia atrasada solo frena el lado con ajuste', () {
+      final other = acc('B').copyWith(initialDate: DateTime(2026, 1, 1));
+      final t = mv(MovementKind.transfer, 1000, account: 'A', to: 'B', date: lastMonth, createdAt: later);
+      expect(computeBalances([start, other], [adjust, t]), {'A': 4200, 'B': 1000});
+    });
+
+    test('con varios ajustes basta uno posterior ya registrado', () {
+      final second = makeAdjustment(account: start, currentMinor: 4200, realMinor: 4000, now: later)!;
+      final between = today.add(const Duration(minutes: 30));
+      final m = mv(MovementKind.expense, 1000, date: between, createdAt: later.add(const Duration(hours: 1)));
+      final notYet = mv(MovementKind.expense, 10, date: between, createdAt: between);
+      expect(computeBalances([start], [adjust, second, m]), {'A': 4000});
+      expect(computeBalances([start], [adjust, second, notYet]), {'A': 3990},
+          reason: 'apuntado antes del segundo ajuste, tras la fecha del primero');
+    });
+
+    test('una transferencia atrasada hecha con makeTransfer se registra como apuntada ahora', () {
+      final other = acc('B');
+      final old = DateTime(2000, 1, 1);
+      final t = makeTransfer(from: start, to: other, amountMinor: 100, date: old);
+      expect(t.date, old);
+      expect(t.createdAt.isAfter(old), isTrue);
+    });
+  });
+
   test('totalsByCurrency agrupa por moneda y deja fuera las archivadas', () {
     final accounts = [a, b, usd, acc('Z', archived: true)];
     expect(totalsByCurrency(accounts, {'A': 100, 'B': 50, 'U': 7, 'Z': 9999}), {'PEN': 150, 'USD': 7});
@@ -241,6 +352,11 @@ void main() {
     test('entre monedas exige el importe recibido; a la misma cuenta no se puede', () {
       expect(() => makeTransfer(from: a, to: usd, amountMinor: 1, date: _day), throwsArgumentError);
       expect(() => makeTransfer(from: a, to: a, amountMinor: 1, date: _day), throwsArgumentError);
+    });
+
+    test('el importe tiene que ser positivo', () {
+      expect(() => makeTransfer(from: a, to: b, amountMinor: 0, date: _day), throwsArgumentError);
+      expect(() => makeTransfer(from: a, to: b, amountMinor: -1, date: _day), throwsArgumentError);
     });
   });
 
@@ -300,6 +416,7 @@ void main() {
       expect(d.name, 'Mi cuenta');
       expect(d.currency, 'USD');
       expect(d.initialMinor, 0);
+      expect(d.initialDate, kAccountBeginning, reason: 'conserva todo el historial');
       expect(d.isDefault, isTrue);
       expect(d.archived, isFalse);
       expect((await all()).single.id, d.id);

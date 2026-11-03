@@ -6,8 +6,13 @@ enum AccountType { bank, wallet, cash, creditCard, other }
 /// escriben el mismo documento, así que nunca pueden dejar dos cuentas.
 const kDefaultAccountId = 'default';
 
+/// `initialDate` de una cuenta que cuenta todo el historial, sin importar lo
+/// antiguo que sea.
+final kAccountBeginning = DateTime.fromMillisecondsSinceEpoch(0);
+
 /// Una cuenta con saldo: banco, billetera, efectivo, tarjeta de crédito u otra.
-/// Su saldo es [initialMinor] más el efecto de sus movimientos.
+/// Su saldo es [initialMinor] más el efecto de sus movimientos desde
+/// [initialDate] (ver `computeBalances`).
 @immutable
 class WalletAccount {
   const WalletAccount({
@@ -29,9 +34,11 @@ class WalletAccount {
   /// Código ISO 4217: la cuenta solo cuenta movimientos en esta moneda.
   final String currency;
 
-  /// Saldo inicial en unidades menores (en una tarjeta de crédito, lo que se
-  /// debe es negativo).
+  /// Saldo en [initialDate], en unidades menores (en una tarjeta de crédito, lo
+  /// que se debe es negativo).
   final int initialMinor;
+
+  /// Lo anterior a este instante ya está dentro de [initialMinor].
   final DateTime initialDate;
   final String? lastDigits;
 
@@ -88,15 +95,16 @@ class WalletAccount {
       );
 }
 
-/// "Mi cuenta": saldo inicial 0, porque el saldo de quien ya tenía datos sale
-/// de sus movimientos (el "Saldo inicial" del onboarding ya es uno).
-WalletAccount newDefaultAccount(String currency, DateTime now) => WalletAccount(
+/// "Mi cuenta": saldo inicial 0 desde [kAccountBeginning], porque el saldo de
+/// quien ya tenía datos sale de todo su historial (el "Saldo inicial" del
+/// onboarding ya es un movimiento).
+WalletAccount newDefaultAccount(String currency) => WalletAccount(
       id: kDefaultAccountId,
       name: 'Mi cuenta',
       type: AccountType.other,
       currency: currency,
       initialMinor: 0,
-      initialDate: now,
+      initialDate: kAccountBeginning,
       isDefault: true,
     );
 

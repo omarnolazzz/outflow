@@ -105,7 +105,7 @@ class MemoryAccounts implements AccountRepository {
   Future<WalletAccount> ensureDefault(String currency) async {
     final current = defaultAccountOf(saved);
     if (current != null) return current;
-    final a = newDefaultAccount(currency, DateTime(2026, 10, 1));
+    final a = newDefaultAccount(currency);
     _items[a.id] = a;
     _emit();
     return a;

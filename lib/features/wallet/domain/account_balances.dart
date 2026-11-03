@@ -40,18 +40,63 @@ bool _countsIn(Movement m, WalletAccount account, String defaultAccountId) {
   return m.transferIncoming && m.receivedMinor != null && (m.accountId ?? defaultAccountId) == account.id;
 }
 
-/// Saldo de cada cuenta, también de las archivadas: saldo inicial más el efecto
-/// de sus movimientos.
+/// Los ajustes de una cuenta como puntos de control: al ajustar, el usuario dijo
+/// su saldo real, y ese saldo ya incluía lo ocurrido hasta entonces.
+class _Checkpoints {
+  _Checkpoints(Iterable<Movement> adjustments) : _adjustments = adjustments.toList() {
+    _adjustments.sort((a, b) => a.date.compareTo(b.date));
+    _earliestCreated = List.of(_adjustments.map((a) => a.createdAt));
+    for (var i = _earliestCreated.length - 2; i >= 0; i--) {
+      if (_earliestCreated[i + 1].isBefore(_earliestCreated[i])) _earliestCreated[i] = _earliestCreated[i + 1];
+    }
+  }
+
+  /// Por fecha, de antes a después.
+  final List<Movement> _adjustments;
+
+  /// [i]: el `createdAt` más antiguo entre los ajustes de [i] en adelante.
+  late final List<DateTime> _earliestCreated;
+
+  /// [m] se apuntó después de un ajuste con fecha posterior a la suya: ocurrió
+  /// antes de ese saldo real y se registró cuando ya estaba incluido.
+  bool covers(Movement m) {
+    var low = 0;
+    var high = _adjustments.length;
+    while (low < high) {
+      final mid = (low + high) ~/ 2;
+      if (_adjustments[mid].date.isAfter(m.date)) {
+        high = mid;
+      } else {
+        low = mid + 1;
+      }
+    }
+    return low < _adjustments.length && m.createdAt.isAfter(_earliestCreated[low]);
+  }
+}
+
+/// Saldo de cada cuenta, también de las archivadas. `initialMinor` es el saldo en
+/// `initialDate`, así que se le suma el efecto de los movimientos desde ese
+/// instante (cada cuenta mira el suyo: una transferencia puede contar solo en un
+/// lado), salvo los que ya incluía un ajuste ([_Checkpoints]). Los ajustes no los
+/// frena otro ajuste.
 Map<String, int> computeBalances(List<WalletAccount> accounts, List<Movement> movements) {
   final defaultId = defaultAccountOf(accounts)?.id;
   if (defaultId == null) return {};
-  return {
-    for (final a in accounts)
-      a.id: movements.fold<int>(
-        a.initialMinor,
-        (sum, m) => _countsIn(m, a, defaultId) ? sum + accountEffectMinor(m, a.id, defaultId) : sum,
-      ),
-  };
+  final adjustments = movements.where((m) => m.kind == MovementKind.adjustment).toList();
+  final balances = <String, int>{};
+  for (final a in accounts) {
+    final checkpoints = _Checkpoints(
+      adjustments.where((m) => (m.accountId ?? defaultId) == a.id && _countsIn(m, a, defaultId)),
+    );
+    var balance = a.initialMinor;
+    for (final m in movements) {
+      if (!_countsIn(m, a, defaultId) || m.date.isBefore(a.initialDate)) continue;
+      if (m.kind != MovementKind.adjustment && checkpoints.covers(m)) continue;
+      balance += accountEffectMinor(m, a.id, defaultId);
+    }
+    balances[a.id] = balance;
+  }
+  return balances;
 }
 
 /// Total por moneda de las cuentas sin archivar, sin convertir.
@@ -97,6 +142,7 @@ Movement makeTransfer({
   required DateTime date,
   String note = '',
 }) {
+  if (amountMinor <= 0) throw ArgumentError('El importe de una transferencia tiene que ser positivo.');
   if (from.id == to.id) throw ArgumentError('Una transferencia necesita dos cuentas distintas.');
   if (from.currency != to.currency && receivedMinor == null) {
     throw ArgumentError('Entre monedas distintas hay que indicar el importe recibido.');
@@ -107,7 +153,8 @@ Movement makeTransfer({
     amount: Money(amountMinor, from.currency),
     categoryId: kNoCategoryId,
     date: date,
-    createdAt: date,
+    // Cuándo se apuntó, no cuándo ocurrió: lo necesitan los puntos de control.
+    createdAt: DateTime.now(),
     title: '${from.name} → ${to.name}',
     note: note,
     accountId: from.id,
