@@ -62,6 +62,7 @@ void main() {
           paidMinor: 10000,
           needsReview: true,
           externalRef: 'r',
+          pairedCaptureId: 'capture:x',
         );
     expect(run([expense()], [current]).upsert, isEmpty, reason: 'sin cambios: no reescribe');
 
@@ -71,6 +72,7 @@ void main() {
     expect(changed.paidMinor, 10000);
     expect(changed.needsReview, isTrue);
     expect(changed.externalRef, 'r');
+    expect(changed.pairedCaptureId, 'capture:x');
   });
 
   test('un nombre vacío usa la parte local del correo, o "Amigo"', () {

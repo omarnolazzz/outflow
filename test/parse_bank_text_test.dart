@@ -43,19 +43,50 @@ void main() {
       expect(parse('Pagaste S/ 1.250,50 en Tambo')!.amountMinor, 125050);
       expect(parse('Pagaste PEN 45 en Tambo')!.amountMinor, 4500);
       expect(parse('Pagaste S/. 12.50 en Tambo')!.amountMinor, 1250);
-      expect(parse('Monto: 1.250,50')!.amountMinor, 125050);
+      expect(parse('Constancia de operación\nMonto: 1.250,50')!.amountMinor, 125050);
     });
 
-    test('un texto que es solo un importe se lee', () {
-      expect(parse('S/ 1,250.50')!.amountMinor, 125050);
-      expect(parse('1.250,50')!.amountMinor, 125050);
-      expect(parse('PEN 45')!.amountMinor, 4500);
+    test('un importe solo, sin nada que lo confirme, no es un movimiento', () {
+      for (final t in const ['S/ 1,250.50', '1.250,50', 'PEN 45', '10.50', 'Monto: S/ 45.00']) {
+        expect(parse(t), isNull, reason: t);
+      }
+    });
+
+    test('lista permitida: sin señal de operación, null', () {
+      for (final t in const [
+        'Paga con Yape y recibe S/ 10',
+        'Haz tu primera compra y llévate S/ 20',
+        'Con Yape tienes S/ 5 de regalo',
+        'Tu primera transferencia de S/ 50 es gratis',
+        'Compra S/ 20 y participa',
+        'Tienes un pago pendiente de S/ 250.00',
+        'Hubo un problema con tu pago de S/ 25.00',
+        'Tu clave es 482913 para la compra de S/ 50.00 en Tienda',
+        'Token 482913 para tu compra de S/ 50.00',
+        'Tu estado de cuenta: total S/ 500.00',
+        'Total a pagar S/ 500.00',
+        'Por tu compra de S/ 50.00 en Wong llévate un premio',
+        'Si pagaste S/ 50.00 con otra tarjeta, avísanos',
+        'Operación rechazada\nMonto: S/ 50.00',
+        'Constancia de operación\nMonto: S/ 50.00\nEstado: Rechazado',
+      ]) {
+        expect(parse(t), isNull, reason: t);
+      }
+    });
+
+    test('un pie de correo no anula una operación real', () {
+      final constancia = parse('Constancia de transferencia\nMonto: S/ 150.00\nDestino: Ana\nRecuerda que nunca te pediremos tus claves.')!;
+      expect(constancia.amountMinor, 15000);
+      expect(constancia.direction, CaptureDirection.out);
+      final consumo = parse('Consumo de S/ 45.00 en Tambo\nConoce nuestras promociones en la app.')!;
+      expect(consumo.amountMinor, 4500);
+      expect(consumo.direction, CaptureDirection.out);
     });
 
     test('la moneda sale del texto y si no, de la principal', () {
       expect(parse('Pagaste USD 9.99 en Amazon')!.currency, 'USD');
       expect(parse('Pagaste S/ 9.99 en Tambo', fallback: 'USD')!.currency, 'PEN');
-      expect(parse('Monto: 45.00', fallback: 'MXN')!.currency, 'MXN');
+      expect(parse('Operación exitosa. Monto: 45.00', fallback: 'MXN')!.currency, 'MXN');
       expect(parse(r'Pagaste $ 12.50 en Oxxo', fallback: 'MXN')!.currency, 'MXN');
       expect(parse(r'Pagaste $ 12.50 en Amazon')!.currency, 'USD');
       expect(parse('Recibiste 20 soles de Ana')!.currency, 'PEN');
@@ -74,8 +105,8 @@ void main() {
       expect(parse('Comisión S/ 1.00… Transferiste S/ 500.00')!.amountMinor, 50000);
       expect(parse('Transferiste S/ 500.00. ITF S/ 0.25')!.amountMinor, 50000);
       expect(parse('Transferiste S/ 500.00 con S/ 1.00 de comisión')!.amountMinor, 50000);
-      expect(parse('Monto: S/ 500.00 Comisión: S/ 5.00 Total: S/ 505.00')!.amountMinor, 50000);
-      expect(parse('Comisión: S/ 5.00 Total: S/ 505.00 Monto: S/ 500.00')!.amountMinor, 50000);
+      expect(parse('Constancia de operación\nMonto: S/ 500.00 Comisión: S/ 5.00 Total: S/ 505.00')!.amountMinor, 50000);
+      expect(parse('Constancia de operación\nComisión: S/ 5.00 Total: S/ 505.00 Monto: S/ 500.00')!.amountMinor, 50000);
     });
 
     test('solo saldo, comisión o ITF no es un movimiento', () {
@@ -136,9 +167,15 @@ void main() {
         'Pagaste S/ 25.00',
         'Enviaste S/ 25.00',
         'Transferiste S/ 25.00',
-        'Compra de S/ 25.00',
-        'Consumo por S/ 25.00',
+        'Compra de S/ 25.00 en Tambo',
+        'Consumo por S/ 25.00 en Tambo',
         'Tu pago de S/ 25.00 fue recibido',
+        'Hemos recibido tu pago de S/ 100.00',
+        'Tu solicitud fue recibida. Compra de S/ 20.00 en Tienda',
+        'Se realizó un consumo de S/ 25.00',
+        'Si recibiste esto por error, llámanos.\nPagaste S/ 25.00 en Tambo',
+        'Pagaste S/ 25.00 en Tambo\nSi recibiste este correo por error, llámanos.',
+        'Constancia de transferencia\nMonto: S/ 25.00\nSi recibiste esto por error, llámanos.',
       ]) {
         expect(parse(t)!.direction, CaptureDirection.out, reason: t);
       }
@@ -149,8 +186,15 @@ void main() {
         'Recibiste S/ 25.00',
         'Ana te envió S/ 25.00',
         'Te yapearon S/ 25.00',
-        'Abono de S/ 25.00',
-        'Depósito de S/ 25.00',
+        'Abono de S/ 25.00 en tu cuenta',
+        'Depósito de S/ 25.00 en tu cuenta',
+        'Se realizó un abono de S/ 100.00 a tu cuenta',
+        'Se realizó un depósito de S/ 100.00',
+        'Reembolso de tu compra S/ 30.00',
+        'Depositaste S/ 100.00 en tu cuenta',
+        'Transferencia recibida: S/ 50.00 de Ana',
+        'Constancia de depósito\nMonto: S/ 25.00',
+        'Recibiste un Yape\nMonto: S/ 25.00',
         'Recibiste un pago de S/ 25.00',
         'S/ 25.00 recibidos',
       ]) {
@@ -175,6 +219,24 @@ void main() {
       expect(parse('Pagaste S/ 25.00. N° de operación: 12345678')!.operationId, '12345678');
       expect(parse('Pagaste S/ 25.00. Referencia: AB12CD')!.operationId, 'AB12CD');
       expect(parse('Operación exitosa. Pagaste S/ 25.00')!.operationId, isNull);
+      expect(parse('Pagaste S/ 25.00. Nro. de operación: 556677')!.operationId, '556677');
+      expect(parse('Pagaste S/ 25.00. Código de operación: 8899')!.operationId, '8899');
+      expect(parse('Pagaste S/ 25.00. Operación: 4433')!.operationId, '4433');
+    });
+
+    test('un número suelto de tarjeta, cuenta, comercio o cliente no es número de operación', () {
+      for (final t in const [
+        'Compraste S/ 25.00 en Tambo con tarjeta N° 1234',
+        'Pagaste S/ 25.00 con cuenta Nro 5678',
+        'Pagaste S/ 25.00. Cta N° 5678',
+        'Pagaste S/ 25.00. Comercio N° 44556',
+        'Pagaste S/ 25.00. Cliente Nro 998877',
+        'Pagaste S/ 25.00. N° 1234',
+        'Pagaste S/ 25.00. Código 1234',
+        'Pagaste S/ 25.00. Comercio referencia 1234',
+      ]) {
+        expect(parse(t)!.operationId, isNull, reason: t);
+      }
     });
 
     test('la cuenta usada, no la de destino ni el CCI', () {
@@ -196,6 +258,11 @@ void main() {
       expect(parse('Pagaste S/ 25.00 el 31/02/2026')!.date, isNull);
       expect(parse('Pagaste S/ 25.00 el 20/12/2026')!.date, isNull);
       expect(parse('Pagaste S/ 25.00')!.date, isNull);
+    });
+
+    test('una fecha de otra frase y sin etiqueta no es la de la operación', () {
+      expect(parse('Pagaste S/ 25.00 en Tambo\nTérminos actualizados el 01/02/2026')!.date, isNull);
+      expect(parse('Pagaste S/ 25.00 en Tambo\nFecha: 02/11/2026')!.date, DateTime(2026, 11, 2));
     });
 
     test('es transferencia si el texto lo dice; una compra, no', () {

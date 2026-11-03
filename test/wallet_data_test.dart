@@ -84,6 +84,7 @@ void main() {
       paidMinor: 0,
       needsReview: true,
       externalRef: 'ref-123',
+      pairedCaptureId: 'capture:abc',
     );
 
     test('sobreviven a JSON', () {
@@ -99,6 +100,7 @@ void main() {
       expect(back.paidMinor, 0);
       expect(back.needsReview, isTrue);
       expect(back.externalRef, 'ref-123');
+      expect(back.pairedCaptureId, 'capture:abc');
     });
 
     test('copyWith los conserva (editar no saca un movimiento de su cuenta)', () {

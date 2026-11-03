@@ -84,15 +84,29 @@ WalletAccount? _byDigits(List<WalletAccount> active, String? digits) {
   return found.length == 1 ? found.first : null;
 }
 
-/// La cuenta cuyo nombre aparece como palabra entera en [text]; con dos o más, ninguna.
-WalletAccount? _byName(List<WalletAccount> active, String text) {
+/// La cuenta nombrada como tuya en [text] ("tu cuenta X", "tarjeta X"); con dos o
+/// más, ninguna. Un nombre suelto no cuenta: "en BCP" puede ser el banco de otro y
+/// "Dale clic" no es la cuenta Dale.
+WalletAccount? _byOwnName(List<WalletAccount> active, String text) {
   final haystack = normalizeMerchant(text);
   final found = <WalletAccount>[];
   for (final a in active) {
     final name = normalizeMerchant(a.name);
     if (name.length < 3 || _genericAccountNames.contains(name)) continue;
-    if (RegExp('(?<![\\p{L}\\p{N}])${RegExp.escape(name)}(?![\\p{L}\\p{N}])', unicode: true).hasMatch(haystack)) found.add(a);
+    final own = RegExp(
+      '(?<![\\p{L}\\p{N}])(?:cuenta|tarjeta)\\s+(?:de\\s+)?(?:credito\\s+|debito\\s+)?${RegExp.escape(name)}(?![\\p{L}\\p{N}])',
+      unicode: true,
+    );
+    if (own.hasMatch(haystack)) found.add(a);
   }
+  return found.length == 1 ? found.first : null;
+}
+
+/// La cuenta que se llama exactamente [party]: el otro lado de una transferencia.
+WalletAccount? _byExactName(List<WalletAccount> active, String party) {
+  final name = normalizeMerchant(party);
+  if (_genericAccountNames.contains(name)) return null;
+  final found = active.where((a) => normalizeMerchant(a.name) == name).toList();
   return found.length == 1 ? found.first : null;
 }
 
@@ -177,7 +191,7 @@ CaptureOutcome processCaptures({
     if (first == null) continue;
 
     final source = active.where((a) => a.id == sourceAccounts[event.sourceKey]).firstOrNull;
-    final account = _byDigits(active, first.accountDigits) ?? _byName(active, accountSearchText(event.text, first)) ?? source;
+    final account = _byDigits(active, first.accountDigits) ?? _byOwnName(active, accountSearchText(event.text, first)) ?? source;
     if (account == null) unmatched.add(event);
     final own = account ?? defaultAccount;
 
@@ -276,7 +290,7 @@ CaptureOutcome processCaptures({
 ({WalletAccount from, WalletAccount to})? _ownTransfer(ParsedBankText p, WalletAccount own, List<WalletAccount> active) {
   if (!p.isTransfer) return null;
   final party = p.counterparty;
-  final other = _byDigits(active, p.toAccountDigits) ?? (party == null ? null : _byName(active, party));
+  final other = _byDigits(active, p.toAccountDigits) ?? (party == null ? null : _byExactName(active, party));
   if (other == null || other.id == own.id) return null;
   if (own.currency != p.currency || other.currency != p.currency) return null;
   return p.direction == CaptureDirection.out ? (from: own, to: other) : (from: other, to: own);

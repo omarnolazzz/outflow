@@ -47,7 +47,7 @@ class CaptureInbox {
       if (await processing.exists()) {
         // Quedó algo de un corte anterior. Si el corte cae aquí, una línea se lee
         // dos veces, y procesarla dos veces no duplica.
-        await processing.writeAsString(await inbox.readAsString(), mode: FileMode.append, flush: true);
+        await processing.writeAsBytes(await inbox.readAsBytes(), mode: FileMode.append, flush: true);
         await inbox.delete();
       } else {
         await inbox.rename(processing.path);
@@ -55,9 +55,18 @@ class CaptureInbox {
     }
     if (!await processing.exists()) return const [];
     final out = <CaptureEvent>[];
-    for (final line in await processing.readAsLines()) {
-      if (line.trim().isEmpty) continue;
+    // Por bytes: decodificar el archivo entero fallaría por una sola línea cortada
+    // a mitad de un carácter, y bloquearía la bandeja para siempre.
+    final bytes = await processing.readAsBytes();
+    var start = 0;
+    while (start < bytes.length) {
+      var end = bytes.indexOf(0x0A, start);
+      if (end == -1) end = bytes.length;
+      final raw = bytes.sublist(start, end);
+      start = end + 1;
       try {
+        final line = utf8.decode(raw);
+        if (line.trim().isEmpty) continue;
         out.add(CaptureEvent.fromJson((jsonDecode(line) as Map).cast<String, Object?>()));
       } catch (_) {
         // Sin el error: su mensaje puede citar la línea, con texto del banco.

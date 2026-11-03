@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -133,7 +134,7 @@ void main() {
 
     test('un importe sin moneda toma la de la cuenta que resulta', () {
       final usd = acc('usd', 'Dólares', currency: 'USD');
-      final o = run([ev('Monto: 45.00', source: 'com.usd')], accounts: [scotia, usd], sources: {'com.usd': 'usd'});
+      final o = run([ev('Operación exitosa. Monto: 45.00', source: 'com.usd')], accounts: [scotia, usd], sources: {'com.usd': 'usd'});
       expect(o.upsert.single.amount, const Money(4500, 'USD'));
     });
   });
@@ -145,7 +146,7 @@ void main() {
     });
 
     test('el nombre en el texto gana a la fuente', () {
-      final m = run([ev('BCP: pagaste S/ 5.00 en Tambo')]).upsert.single;
+      final m = run([ev('Pagaste S/ 5.00 en Tambo con tu cuenta BCP')]).upsert.single;
       expect(m.accountId, 'bcp');
     });
 
@@ -155,8 +156,39 @@ void main() {
     });
 
     test('dos cuentas nombradas no deciden: gana la fuente', () {
-      final m = run([ev('BCP y Dale: pagaste S/ 5.00')]).upsert.single;
+      final m = run([ev('Pagaste S/ 5.00 con tu cuenta BCP y tu cuenta Dale')]).upsert.single;
       expect(m.accountId, 'scotia');
+    });
+
+    test('un nombre fuera de contexto de cuenta propia no cambia la cuenta de la fuente', () {
+      for (final t in const [
+        'Enviaste S/ 5.00 a Ana. Entidad destino: BCP',
+        'Enviaste S/ 5.00 a Ana (BCP)',
+        'Enviaste S/ 5.00 a Ana, banco BCP',
+        'Pagaste S/ 5.00 en BCP',
+        'Pagaste S/ 5.00 en Tambo. Atención en oficinas BCP',
+        'BCP: pagaste S/ 5.00 en Tambo',
+      ]) {
+        final m = run([ev(t, source: 'soporte@lemon.me')]).upsert.single;
+        expect(m.accountId, 'dale', reason: t);
+        expect(m.kind, MovementKind.expense, reason: t);
+      }
+    });
+
+    test('"Dale clic" no es la cuenta Dale', () {
+      final m = run([ev('Pagaste S/ 5.00 en Tambo. Dale clic para ver el detalle')]).upsert.single;
+      expect(m.accountId, 'scotia');
+    });
+
+    test('el nombre sí cuenta como cuenta propia', () {
+      for (final t in const [
+        'Pagaste S/ 5.00 desde tu cuenta BCP',
+        'Pagaste S/ 5.00 con tu cuenta BCP',
+        'Tu cuenta BCP: pagaste S/ 5.00',
+        'Pagaste S/ 5.00 con tarjeta BCP',
+      ]) {
+        expect(run([ev(t, source: 'soporte@lemon.me')]).upsert.single.accountId, 'bcp', reason: t);
+      }
     });
 
     test('sin nada más, la por defecto, y la fuente queda sin asignar', () {
@@ -236,6 +268,16 @@ void main() {
         ev('Pagaste S/ 25.00 con tarjeta ****5678. Referencia: AB12'),
       ]);
       expect(o.upsert, hasLength(2));
+    });
+
+    test('dos compras con la misma tarjeta no comparten referencia', () {
+      final o = run([
+        ev('Compraste S/ 25.00 en Tambo con tarjeta N° 1234'),
+        ev('Compraste S/ 40.00 en Wong con tarjeta N° 1234', at: t0.add(const Duration(minutes: 5))),
+      ]);
+      expect(o.upsert, hasLength(2));
+      expect(o.upsert.map((m) => m.externalRef), everyElement(isNull));
+      expect(o.upsert.map((m) => m.amount.minor), [2500, 4000]);
     });
 
     test('dos cafés iguales con comercio distinto son dos', () {
@@ -477,6 +519,23 @@ void main() {
       File('${dir.path}/capture_inbox.jsonl').writeAsStringSync('{roto\n["x"]\n{"sourceKey":"a"}\n', mode: FileMode.append);
       await inbox.add(ev('dos'));
       expect((await inbox.drain()).map((e) => e.text), ['uno', 'dos']);
+    });
+
+    test('un carácter multibyte cortado solo pierde su línea', () async {
+      await inbox.add(ev('uno'));
+      final bad = [...utf8.encode('{"sourceKey":"a","text":"caf'), 0xC3, 0x0A];
+      File('${dir.path}/capture_inbox.jsonl').writeAsBytesSync(bad, mode: FileMode.append);
+      await inbox.add(ev('dós'));
+      expect((await inbox.drain()).map((e) => e.text), ['uno', 'dós']);
+    });
+
+    test('tampoco bloquea al juntarse con lo que quedó de un corte', () async {
+      await inbox.add(ev('uno'));
+      await inbox.pending();
+      File('${dir.path}/capture_inbox.jsonl').writeAsBytesSync([0xC3, 0x0A], mode: FileMode.append);
+      await inbox.add(ev('dos'));
+      expect((await inbox.drain()).map((e) => e.text), ['uno', 'dos']);
+      expect(dir.listSync(), isEmpty);
     });
 
     test('hasta confirmar no se borra: tras un corte vuelve a leerlo', () async {

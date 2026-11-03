@@ -77,6 +77,7 @@ SplitMovementChanges reconcileSplitMovements({
       paidMinor: current?.paidMinor,
       needsReview: current?.needsReview ?? false,
       externalRef: current?.externalRef,
+      pairedCaptureId: current?.pairedCaptureId,
     );
     if (current == null ||
         current.toJson().toString() != desired.toJson().toString()) {

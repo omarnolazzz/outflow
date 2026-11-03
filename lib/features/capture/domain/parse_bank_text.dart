@@ -47,12 +47,16 @@ const _token = r'[a-z0-9-]*\d[a-z0-9-]*(?![a-z0-9-]|[.,]\d)';
 const _months = 'enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre';
 
 final _idPrimary = RegExp('\\bid\\s+de\\s+(?:la\\s+)?(?:operacion|transaccion)\\s*[:#]?\\s*($_token)');
+
+/// Solo etiquetas explícitas de operación: un "N° 1234" suelto puede ser una
+/// tarjeta o un comercio, y como referencia fundiría dos compras distintas.
 final _idGeneric = RegExp(
-  '(?<![a-z0-9])(?:n[°º]|nro\\.?|numero|codigo|cod\\.?|ref\\.?|referencia|comprobante|constancia)\\s*'
-  '(?:de\\s+)?(?:la\\s+)?(?:operacion|transaccion|referencia)?\\s*[:#]?\\s*($_token)',
+  '(?<![a-z0-9])(?:(?:n[°º]|nro\\.?|numero|codigo|cod\\.?)\\s*(?:de\\s+)?(?:la\\s+)?(?:operacion|transaccion)|'
+  '(?<!(?:tarjeta|cuenta|cta|comercio|cliente)\\s)(?:referencia|ref\\.?))\\s*[:#]?\\s*($_token)',
 );
 final _idOperation = RegExp(
-  '(?<!(?:monto|importe|total)\\s(?:de\\s)?(?:la\\s|el\\s)?)\\b(?:operacion|transaccion)\\s*(?:n[°º]|nro\\.?|numero)?\\s*[:#]?\\s*($_token)',
+  '(?<!(?:monto|importe|total)\\s(?:de\\s)?(?:la\\s|el\\s)?)(?<!(?:tarjeta|cuenta|cta|comercio|cliente)\\s)'
+  '\\b(?:operacion|transaccion)\\s*(?:n[°º]|nro\\.?|numero)?\\s*[:#]?\\s*($_token)',
 );
 final _idExternal = RegExp('\\bid\\s+externo\\s*[:#]?\\s*($_token)');
 
@@ -85,6 +89,7 @@ final _sensitive = <RegExp>[
   _endsInDigits,
   RegExp(r'\b(?:cuenta|tarjeta|cta\.?|tarj\.?)\s*(?:n[°º]|nro\.?)?\s*:?\s*\d[\d -]{2,}(?![.,]\d)'),
   RegExp(r'\b9\d{8}\b(?![.,]\d)'),
+  RegExp(r'(?<![a-z0-9])(?:n[°º]|nro\.?)\s*[:#]?\s*\d+(?![.,]\d)'),
 ];
 
 const _number = r'\d(?:[\d.,]*\d)?';
@@ -92,8 +97,8 @@ const _symbols = r'us\$|mx\$|col\$|ar\$|clp\$|r\$|s\s?/\.?|pen|usd|eur|mxn|cop|a
 const _pastVerbs = 'pagaste|enviaste|recibiste|transferiste|compraste|consumiste|retiraste|depositaste|yapeaste|plineaste|'
     'realizaste|hiciste|efectuaste|has (?:pagado|enviado|recibido|transferido|realizado|hecho)|'
     'te (?:envio|enviaron|transfirio|transfirieron|yapeo|yapearon|plineo|plinearon|pago|pagaron|deposito|depositaron|abono|abonaron|llego)|'
-    'abonamos|depositamos|se (?:abono|deposito|acredito|realizo|debito|cargo)';
-const _nouns = 'total|consumo|compra|pago|retiro|transferencia|envio|abono|deposito|cargo|debito|ingreso|reembolso|devolucion|yape|plin';
+    'abonamos|depositamos|se (?:abono|deposito|acredito|realizo|debito|cargo)|'
+    'hemos (?:recibido|realizado|procesado|abonado|depositado)';
 
 final _prefixAmount = RegExp('(?<![a-z0-9])($_symbols)\\s*(-?)\\s*($_number)(?![\\d%])');
 final _suffixAmount = RegExp('(?<![\\d.,])($_number)\\s*(soles|sol|dolares|euros|pen|usd|eur|mxn|cop|ars|clp|gbp|brl)(?![a-z0-9])');
@@ -102,13 +107,23 @@ final _keywordAmount = RegExp(
   '\\s*(?:de|por)?\\s*[:=]?\\s*-?\\s*($_number)(?![\\d%])',
 );
 final _verbAmount = RegExp('\\b(?:$_pastVerbs)\\s*(?:de|por)?\\s*[:=]?\\s*(\\d[\\d.,]*[.,]\\d{2})(?![\\d%])');
-final _onlyAmount = RegExp(r'^(?:\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})$');
 
+// El lector va por lista permitida: un importe necesita una de estas señales.
 final _verbRe = RegExp('\\b(?:$_pastVerbs)\\b');
 final _opRe = RegExp('\\b(?:$_pastVerbs|monto|importe)\\b');
 final _montoRe = RegExp(r'\b(?:monto|importe)\b');
-final _nounRe = RegExp('\\b(?:$_nouns)\\b');
-final _anyOpRe = RegExp('\\b(?:$_pastVerbs|monto|importe|$_nouns|recibid[oa]s?|pagad[oa]s?|enviad[oa]s?|transferid[oa]s?|abonad[oa]s?)\\b');
+final _labelContext = RegExp(r'\b(?:constancia|operacion|transaccion|destino|destinatario|beneficiario|comercio|establecimiento)\b');
+final _refundRe = RegExp(r'\b(?:reembolso|devolucion)\b');
+const _chargeNouns = 'consumo|compra|cargo|abono|deposito';
+final _chargeRe = RegExp('\\b(?:$_chargeNouns)\\b');
+final _placeBefore = RegExp('\\b(?:$_chargeNouns)\\s+(?:en|a)\\s+\\S');
+final _placeAfter = RegExp(r'^\s*(?:en|a)\s+\S');
+final _opNounRe = RegExp('\\b(?:$_chargeNouns|pago|transferencia|envio|yape|plin|retiro)\\b');
+const _doneWords = r'recibid|realizad|procesad|aprobad|confirmad|acreditad|exitos';
+final _doneBefore = RegExp('\\b(?:$_doneWords)[oa]s?\\b');
+final _doneAfter = RegExp('^\\s*(?:fue\\s+|ha sido\\s+)?(?:$_doneWords)[oa]s?\\b');
+final _participleAfter = RegExp(r'^\s*(?:recibid|pagad|enviad|transferid|abonad|depositad)[oa]s?\b');
+final _conditional = RegExp('\\bsi\\s+(?:$_pastVerbs)\\b');
 
 /// Antes del importe (tras el último verbo): no es el importe de la operación.
 final _discardBefore = RegExp(
@@ -121,25 +136,33 @@ final _discardAfter = RegExp(
   r'(?:de\s+saldo\s+)?disponibles?\b|\(\s*(?:comision|itf|impuesto))',
 );
 
-/// Lo que no ocurrió (rechazado, futuro) o no es una operación (publicidad, claves).
+/// La operación no llegó a ocurrir.
+const _failed = r'rechazad|declinad|denegad|fallid|\bno (?:se )?(?:pudo|pudimos|fue posible|procesad|realizad)|no exitos|revertid|anulad|extornad';
+final _failedRe = RegExp(_failed);
+
+/// En la frase del importe: lo que no ocurrió, lo futuro, la publicidad y las claves.
 final _blockers = RegExp(
-  r'rechazad|declinad|denegad|fallid|\bno (?:se )?(?:pudo|pudimos|fue posible|procesad|realizad)|no exitos|revertid|anulad|extornad|'
-  r'codigo de (?:verificacion|seguridad)|clave dinamica|\botp\b|para (?:autorizar|confirmar|aprobar)|\bvence\b|vencimiento|'
+  '$_failed|'
+  r'codigo de (?:verificacion|seguridad)|clave dinamica|\bclave\b|\btoken\b|\botp\b|para (?:autorizar|confirmar|aprobar)|\bvence\b|vencimiento|'
   r'\brecuerda\b|recordatorio|programad|proxim[oa] (?:pago|cobro|cargo)|aprovecha|\boferta|promocion|sorteo|prestamo|pre-?aprobad|'
-  r'\bsolicita\b|te regalamos|\bgana\b|\bganar\b',
+  r'\bsolicit|te regalamos|\bgana\b|\bganar\b|llevate|participa|regalo|gratis|pendiente|problema|estado de cuenta',
 );
 
 final _lemonPhrase = RegExp(r'realizaste un envio exitoso de\s');
 
-final _outPaid = RegExp(r'tu pago[^\n!?;]{0,30}recibid|recibimos tu pago');
+// "realizaste" y "se realizó" no dicen hacia dónde va el dinero: lo dice el sustantivo.
 final _outVerbs = RegExp(
-  r'\b(?:pagaste|enviaste|transferiste|compraste|consumiste|retiraste|yapeaste|plineaste|realizaste|hiciste|efectuaste|'
-  r'has (?:pagado|enviado|transferido|realizado|hecho)|se (?:realizo|debito|cargo))\b',
+  r'\b(?:pagaste|enviaste|transferiste|compraste|consumiste|retiraste|yapeaste|plineaste|'
+  r'has (?:pagado|enviado|transferido)|se (?:debito|cargo))\b',
 );
 final _inVerbs = RegExp(
-  r'\b(?:recibiste|has recibido|te (?:envio|enviaron|transfirio|transfirieron|yapeo|yapearon|plineo|plinearon|pago|pagaron|deposito|depositaron|abono|abonaron|llego)|'
-  r'abonamos|depositamos|se (?:abono|deposito|acredito)|recibid[oa]s?)\b',
+  r'\b(?:recibiste|has recibido|depositaste|te (?:envio|enviaron|transfirio|transfirieron|yapeo|yapearon|plineo|plinearon|pago|pagaron|deposito|depositaron|abono|abonaron|llego)|'
+  r'abonamos|depositamos|se (?:abono|deposito|acredito)|reembolso|devolucion)\b',
 );
+final _receivedRe = RegExp(r'\brecibid[oa]s?\b');
+
+/// "Recibido" referido a un pago tuyo: es dinero que salió.
+final _yourPayment = RegExp(r'\btu (?:pago|compra|consumo|transferencia|envio|retiro)\b|\b(?:compra|consumo|retiro|cargo|debito)\b');
 final _outNouns = RegExp(r'\b(?:consumo|compra|pago|retiro|transferencia|envio|cargo|debito|pagad[oa]s?|enviad[oa]s?|transferid[oa]s?)\b');
 final _inNouns = RegExp(r'\b(?:abono|abonad[oa]s?|deposito|ingreso|reembolso|devolucion)\b');
 
@@ -272,36 +295,59 @@ bool _discarded(String window, String after) {
   return _discardBefore.hasMatch(last == null ? window : window.substring(last.end));
 }
 
-/// Cuánto se parece a un importe de operación por lo que tiene delante.
-int _rank(String window) {
-  if (_verbRe.hasMatch(window)) return 3;
-  if (_montoRe.hasMatch(window)) return 2;
-  if (_nounRe.hasMatch(window)) return 1;
+const _signalVerb = 3;
+const _signalLabel = 2;
+const _signalNoun = 1;
+
+/// Qué confirma que este importe es una operación; 0 si nada: entonces no lo es.
+int _signal(String window, String after, {required bool labelled}) {
+  if (_verbRe.hasMatch(window)) return _signalVerb;
+  if (labelled && _montoRe.hasMatch(window)) return _signalLabel;
+  if (_refundRe.hasMatch(window)) return _signalNoun;
+  if (_chargeRe.hasMatch(window) && (_placeAfter.hasMatch(after) || _placeBefore.hasMatch(window))) return _signalNoun;
+  if (_opNounRe.hasMatch(window) && (_doneBefore.hasMatch(window) || _doneAfter.hasMatch(after))) return _signalNoun;
   return 0;
 }
 
-CaptureDirection _direction(String folded, int at) {
-  if (_outPaid.hasMatch(folded)) return CaptureDirection.out;
-  CaptureDirection? nearest(RegExp out, RegExp inbound) {
-    int? distance(RegExp r) {
-      int? best;
-      for (final m in r.allMatches(folded)) {
-        final d = (m.start - at).abs();
-        if (best == null || d < best) best = d;
-      }
-      return best;
+CaptureDirection? _nearest(String text, int at, RegExp out, RegExp inbound) {
+  int? distance(RegExp r) {
+    int? best;
+    for (final m in r.allMatches(text)) {
+      final d = (m.start - at).abs();
+      if (best == null || d < best) best = d;
     }
-
-    final o = distance(out);
-    final i = distance(inbound);
-    if (o == null && i == null) return null;
-    if (o == null) return CaptureDirection.inbound;
-    if (i == null) return CaptureDirection.out;
-    return i < o ? CaptureDirection.inbound : CaptureDirection.out;
+    return best;
   }
 
-  return nearest(_outVerbs, _inVerbs) ?? nearest(_outNouns, _inNouns) ?? CaptureDirection.out;
+  final o = distance(out);
+  final i = distance(inbound);
+  if (o == null && i == null) return null;
+  if (o == null) return CaptureDirection.inbound;
+  if (i == null) return CaptureDirection.out;
+  return i < o ? CaptureDirection.inbound : CaptureDirection.out;
 }
+
+CaptureDirection? _directionIn(String text, int at) {
+  final verb = _nearest(text, at, _outVerbs, _inVerbs);
+  if (verb != null) return verb;
+  if (_receivedRe.hasMatch(text)) {
+    return _yourPayment.hasMatch(text) ? CaptureDirection.out : CaptureDirection.inbound;
+  }
+  return _nearest(text, at, _outNouns, _inNouns);
+}
+
+/// El sentido sale de la frase del importe: "Si recibiste este correo…" en un pie
+/// no convierte un pago en un ingreso. Un importe etiquetado va en su propia línea:
+/// lo dice la cabecera, o el primer sustantivo. Sin más datos, una salida.
+CaptureDirection _direction(String folded, _Amount a, {required bool labelled}) {
+  final start = _sentenceStart(folded, 0, a.start);
+  final sentence = folded.substring(start, _sentenceEnd(folded, a.end));
+  final own = _directionIn(sentence, a.start - start);
+  if (own != null || !labelled) return own ?? CaptureDirection.out;
+  return _directionIn(_firstLine(folded), 0) ?? _nearest(folded, 0, _outNouns, _inNouns) ?? CaptureDirection.out;
+}
+
+String _firstLine(String text) => text.trimLeft().split('\n').first;
 
 String? _cleanParty(String raw) {
   var v = raw.replaceAll(_partyEdges, '').trim().replaceAll(RegExp(r'\s+'), ' ');
@@ -391,23 +437,31 @@ DateTime? _validDate(int year, int month, int day) {
   return d.year == year && d.month == month && d.day == day ? d : null;
 }
 
-DateTime? _parseDate(String folded, DateTime now) {
+/// Solo una fecha etiquetada o en la frase del importe ([from]–[to]): la de unos
+/// términos actualizados, en un pie, no es la de la operación.
+DateTime? _parseDate(String folded, DateTime now, int from, int to) {
+  Match? first(RegExp r) => r.allMatches(folded).where((m) {
+        final inSentence = m.start >= from && m.start < to;
+        final before = folded.substring(m.start < 20 ? 0 : m.start - 20, m.end);
+        return inSentence || before.contains('fecha');
+      }).firstOrNull;
+
   Match? match;
   DateTime? date;
-  if (_isoDate.firstMatch(folded) case final m?) {
+  if (first(_isoDate) case final m?) {
     match = m;
     date = _validDate(int.parse(m[1]!), int.parse(m[2]!), int.parse(m[3]!));
-  } else if (_dmyDate.firstMatch(folded) case final m?) {
+  } else if (first(_dmyDate) case final m?) {
     match = m;
     final y = int.parse(m[3]!);
     date = _validDate(y < 100 ? 2000 + y : y, int.parse(m[2]!), int.parse(m[1]!));
-  } else if (_wordDate.firstMatch(folded) case final m?) {
+  } else if (first(_wordDate) case final m?) {
     match = m;
     final names = _months.replaceAll('septiembre|', '').split('|');
     final name = m[2] == 'septiembre' ? 'setiembre' : m[2]!;
     final month = names.indexOf(name) + 1;
     date = _dateNoYear(m[3] == null ? null : int.parse(m[3]!), month, int.parse(m[1]!), now);
-  } else if (_dmDate.firstMatch(folded) case final m?) {
+  } else if (first(_dmDate) case final m?) {
     match = m;
     date = _dateNoYear(null, int.parse(m[2]!), int.parse(m[1]!), now);
   }
@@ -437,13 +491,14 @@ ParsedBankText? parseBankText(String text, {required String fallbackCurrency, re
   final raw = _plainSpaces(text);
   final masked = _maskFields(raw, _sensitive);
   final folded = _fold(masked);
+  final rawFolded = _fold(raw);
   final amounts = _findAmounts(folded, fallbackCurrency);
 
-  final chosen = _chooseAmount(folded, amounts, fallbackCurrency);
-  if (chosen == null) return null;
+  final found = _chooseAmount(folded, rawFolded, amounts);
+  if (found == null) return null;
+  final chosen = found.amount;
 
-  final rawFolded = _fold(raw);
-  final direction = _direction(folded, chosen.start);
+  final direction = _direction(folded, chosen, labelled: found.signal == _signalLabel);
   final digits = _digits(rawFolded, direction);
   final isTransfer = _lemonPhrase.hasMatch(folded) || (_transferWords.hasMatch(rawFolded) && !_purchaseWords.hasMatch(rawFolded));
   return ParsedBankText(
@@ -451,7 +506,7 @@ ParsedBankText? parseBankText(String text, {required String fallbackCurrency, re
     currency: chosen.currency ?? fallbackCurrency,
     direction: direction,
     counterparty: _counterparty(masked, folded, chosen, direction),
-    date: _parseDate(rawFolded, now),
+    date: _parseDate(rawFolded, now, _sentenceStart(folded, 0, chosen.start), _sentenceEnd(folded, chosen.end)),
     operationId: _operationId(raw, rawFolded),
     accountDigits: digits.own,
     toAccountDigits: digits.to,
@@ -459,49 +514,44 @@ ParsedBankText? parseBankText(String text, {required String fallbackCurrency, re
   );
 }
 
-_Amount? _chooseAmount(String folded, List<_Amount> amounts, String fallback) {
+({_Amount amount, int signal})? _chooseAmount(String folded, String rawFolded, List<_Amount> amounts) {
   // Regla de Lemon/Dale: su frase dice cuál es el importe.
   final lemon = _lemonPhrase.firstMatch(folded);
   if (lemon != null) {
     final a = amounts.where((x) => x.start >= lemon.end - 1).firstOrNull;
-    if (a != null) return a;
+    if (a != null) return (amount: a, signal: _signalVerb);
   }
 
   // Regla genérica.
-  final trimmed = folded.trim();
-  if (amounts.isEmpty && _onlyAmount.hasMatch(trimmed)) return _amount(0, 0, trimmed.length, trimmed, null);
-
+  final labelled = _labelContext.hasMatch(rawFolded) || _verbRe.hasMatch(_firstLine(folded));
   final kept = <(_Amount, String)>[];
   for (var i = 0; i < amounts.length; i++) {
     final window = _beforeWindow(folded, amounts, i);
     if (!_discarded(window, folded.substring(amounts[i].end))) kept.add((amounts[i], window));
   }
-  if (kept.isEmpty) return null;
 
-  (_Amount, String)? best;
-  var bestRank = 0;
-  for (final k in kept) {
-    final r = _rank(k.$2);
-    if (r > bestRank) {
-      best = k;
-      bestRank = r;
+  _Amount? best;
+  var signal = 0;
+  for (final (a, window) in kept) {
+    final s = _signal(window, folded.substring(a.end), labelled: labelled);
+    if (s > signal) {
+      best = a;
+      signal = s;
     }
   }
-
-  if (best != null) {
-    final a = best.$1;
-    // Un verbo en pasado manda: el pie de un correo no anula el pago. Solo cuenta
-    // lo que diga su propia frase.
-    final scope = bestRank == 3 ? '${best.$2}${folded.substring(a.start, _sentenceEnd(folded, a.end))}' : folded;
-    return _blockers.hasMatch(scope) ? null : a;
+  // Tras el importe, solo si no hay otro con el que confundirlo.
+  if (best == null && kept.length == 1 && _participleAfter.hasMatch(folded.substring(kept.single.$1.end))) {
+    best = kept.single.$1;
+    signal = _signalNoun;
   }
+  if (best == null) return null;
 
-  // El texto entero es solo un importe.
-  final first = kept.first.$1;
-  if (trimmed.length == first.end - first.start) return first;
-  if (!_anyOpRe.hasMatch(folded) || _blockers.hasMatch(folded)) return null;
-  // Sin nada delante, solo si no hay otro importe con el que confundirlo.
-  return {for (final k in kept) k.$1.minor}.length == 1 ? first : null;
+  // Un pie de correo no anula la operación: los bloqueos miran la frase del importe.
+  final sentence = folded.substring(_sentenceStart(folded, 0, best.start), _sentenceEnd(folded, best.end));
+  if (_blockers.hasMatch(sentence) || _conditional.hasMatch(sentence)) return null;
+  // Sin verbo en pasado, un "Estado: Rechazado" en otra línea sí la descarta.
+  if (signal != _signalVerb && _failedRe.hasMatch(folded)) return null;
+  return (amount: best, signal: signal);
 }
 
 /// [text] sin lo que pertenece al otro lado de la operación (destinatario, su
