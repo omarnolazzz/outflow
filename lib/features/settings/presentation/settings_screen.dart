@@ -17,6 +17,7 @@ import '../../account/presentation/session_controller.dart';
 import '../../notifications/domain/notification_rule.dart';
 import '../../notifications/presentation/notification_providers.dart';
 import '../../notifications/presentation/widgets/notification_rule_editor.dart';
+import '../../statements/presentation/import_statement_screen.dart';
 import '../../wallet/data/payment_listener.dart';
 import '../../wallet/domain/wallet_account.dart';
 import '../../wallet/domain/wallet_settings.dart';
@@ -238,6 +239,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               icon: LucideIcons.landmark,
               label: 'Cuentas',
               onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AccountsScreen())),
+            ),
+            _Tile(
+              icon: LucideIcons.fileUp,
+              label: 'Importar estado de cuenta',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ImportStatementScreen())),
             ),
             _Tile(
               icon: LucideIcons.tags,

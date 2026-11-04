@@ -78,7 +78,8 @@ bool _digitsMatch(String? own, String digits) {
   return own.endsWith(digits) || digits.endsWith(own);
 }
 
-WalletAccount? _byDigits(List<WalletAccount> active, String? digits) {
+/// La única cuenta cuyos últimos dígitos coinciden con [digits].
+WalletAccount? accountByDigits(List<WalletAccount> active, String? digits) {
   if (digits == null) return null;
   final found = active.where((a) => _digitsMatch(a.lastDigits, digits)).toList();
   return found.length == 1 ? found.first : null;
@@ -111,7 +112,7 @@ WalletAccount? _byExactName(List<WalletAccount> active, String party) {
 }
 
 /// Cómo afecta un movimiento a una cuenta, para comparar con un evento.
-({CaptureDirection direction, int minor, String? currency})? _sideIn(Movement m, String accountId, String defaultAccountId) {
+({CaptureDirection direction, int minor, String? currency})? accountSide(Movement m, String accountId, String defaultAccountId) {
   if (m.origin == MovementOrigin.subscription) return null;
   final mine = (m.accountId ?? defaultAccountId) == accountId;
   switch (m.kind) {
@@ -141,6 +142,43 @@ bool _compatibleMerchants(String a, String b) {
 }
 
 bool _sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
+
+int _calendarDaysApart(DateTime a, DateTime b) =>
+    DateTime.utc(a.year, a.month, a.day).difference(DateTime.utc(b.year, b.month, b.day)).inDays.abs();
+
+/// ¿Puede [m] ser otro rastro de una operación en la cuenta [accountId]? Las reglas
+/// que comparten la captura y la importación: misma cuenta, sentido e importe, misma
+/// moneda, fecha cercana y sin dos referencias distintas (son dos operaciones).
+///
+/// La fecha se compara con [window] o, con [calendarDays], por días de calendario
+/// (un estado de cuenta solo trae el día). Con [merchant] también se exige un
+/// comercio compatible: la descripción de un banco no se parece al de un aviso, así
+/// que la importación no lo pasa.
+bool isDuplicate(
+  Movement m, {
+  required String accountId,
+  required String defaultAccountId,
+  required CaptureDirection direction,
+  required int amountMinor,
+  required String currency,
+  required DateTime date,
+  Duration window = const Duration(days: _windowDays),
+  int? calendarDays,
+  String? merchant,
+  String? ref,
+}) {
+  final side = accountSide(m, accountId, defaultAccountId);
+  if (side == null || side.direction != direction || side.minor != amountMinor) return false;
+  if (side.currency != null && side.currency != currency) return false;
+  if (calendarDays != null) {
+    if (_calendarDaysApart(m.date, date) > calendarDays) return false;
+  } else if (m.date.difference(date).abs() > window) {
+    return false;
+  }
+  if (merchant != null && !_compatibleMerchants(m.title, merchant)) return false;
+  if (ref != null && m.externalRef != null && m.externalRef!.toLowerCase() != ref.toLowerCase()) return false;
+  return true;
+}
 
 String _fallbackCategory(List<Category> categories, MovementKind kind, {String? preferred}) {
   final ofKind = categories.where((c) => c.kind == kind && !c.reserved).toList();
@@ -191,7 +229,7 @@ CaptureOutcome processCaptures({
     if (first == null) continue;
 
     final source = active.where((a) => a.id == sourceAccounts[event.sourceKey]).firstOrNull;
-    final account = _byDigits(active, first.accountDigits) ?? _byOwnName(active, accountSearchText(event.text, first)) ?? source;
+    final account = accountByDigits(active, first.accountDigits) ?? _byOwnName(active, accountSearchText(event.text, first)) ?? source;
     if (account == null) unmatched.add(event);
     final own = account ?? defaultAccount;
 
@@ -204,7 +242,7 @@ CaptureOutcome processCaptures({
     // La misma referencia en la misma cuenta siempre es la misma operación.
     if (ref != null) {
       final same = working
-          .where((m) => m.externalRef?.toLowerCase() == ref.toLowerCase() && _sideIn(m, own.id, defaultAccountId) != null)
+          .where((m) => m.externalRef?.toLowerCase() == ref.toLowerCase() && accountSide(m, own.id, defaultAccountId) != null)
           .firstOrNull;
       if (same != null) {
         if (same.title.isEmpty && merchant.isNotEmpty) put(same.copyWith(title: merchant));
@@ -214,14 +252,19 @@ CaptureOutcome processCaptures({
 
     final candidates = <Movement>[];
     for (final m in working) {
-      final side = _sideIn(m, own.id, defaultAccountId);
-      if (side == null || side.direction != parsed.direction || side.minor != parsed.amountMinor) continue;
-      if (side.currency != null && side.currency != parsed.currency) continue;
-      if (m.date.difference(date).abs() > const Duration(days: _windowDays)) continue;
-      if (!_compatibleMerchants(m.title, merchant)) continue;
-      // Dos referencias distintas son dos operaciones, sin ninguna duda.
-      if (ref != null && m.externalRef != null) continue;
-      candidates.add(m);
+      if (isDuplicate(
+        m,
+        accountId: own.id,
+        defaultAccountId: defaultAccountId,
+        direction: parsed.direction,
+        amountMinor: parsed.amountMinor,
+        currency: parsed.currency,
+        date: date,
+        merchant: merchant,
+        ref: ref,
+      )) {
+        candidates.add(m);
+      }
     }
     candidates.sort((a, b) => a.date.difference(date).abs().compareTo(b.date.difference(date).abs()));
 
@@ -290,7 +333,7 @@ CaptureOutcome processCaptures({
 ({WalletAccount from, WalletAccount to})? _ownTransfer(ParsedBankText p, WalletAccount own, List<WalletAccount> active) {
   if (!p.isTransfer) return null;
   final party = p.counterparty;
-  final other = _byDigits(active, p.toAccountDigits) ?? (party == null ? null : _byExactName(active, party));
+  final other = accountByDigits(active, p.toAccountDigits) ?? (party == null ? null : _byExactName(active, party));
   if (other == null || other.id == own.id) return null;
   if (own.currency != p.currency || other.currency != p.currency) return null;
   return p.direction == CaptureDirection.out ? (from: own, to: other) : (from: other, to: own);

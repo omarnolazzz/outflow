@@ -68,7 +68,8 @@ class AccountPicker extends ConsumerWidget {
           child: Text(label, style: AppType.subhead.copyWith(fontWeight: FontWeight.w500)),
         ),
         SizedBox(
-          height: 64,
+          // Con letra grande la ficha necesita más alto.
+          height: MediaQuery.textScalerOf(context).scale(64),
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: options.length,

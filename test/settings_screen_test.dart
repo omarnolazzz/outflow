@@ -8,6 +8,7 @@ import 'package:outflow/features/account/presentation/session_controller.dart';
 import 'package:outflow/features/notifications/domain/notification_rule.dart';
 import 'package:outflow/features/notifications/presentation/notification_providers.dart';
 import 'package:outflow/features/settings/presentation/settings_screen.dart';
+import 'package:outflow/features/statements/presentation/import_statement_screen.dart';
 import 'package:outflow/core/domain/money.dart';
 import 'package:outflow/features/wallet/domain/default_categories.dart';
 import 'package:outflow/features/wallet/domain/movement.dart';
@@ -120,6 +121,13 @@ void main() {
     await tester.tap(find.text(code));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('la fila "Importar estado de cuenta" abre la importación', (tester) async {
+    await pump(tester);
+    await tester.tap(find.text('Importar estado de cuenta'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ImportStatementScreen), findsOneWidget);
+  });
 
   testWidgets('la fila "Cuentas" abre la lista de cuentas', (tester) async {
     await pump(tester);

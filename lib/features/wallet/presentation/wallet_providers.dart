@@ -125,6 +125,8 @@ class WalletActions {
 
   Future<void> save(Movement m) => _movements.save(m);
 
+  Future<void> saveAll(Iterable<Movement> ms) => _movements.saveAll(ms);
+
   /// Borra y devuelve el movimiento (para Deshacer). Un cobro de suscripción
   /// borrado se recuerda para que la conciliación no lo vuelva a crear.
   Future<Movement?> delete(String id) async {

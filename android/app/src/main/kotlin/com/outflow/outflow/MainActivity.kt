@@ -9,10 +9,15 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
+import com.tom_roush.pdfbox.text.PDFTextStripper
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import kotlin.concurrent.thread
 import kotlin.math.abs
 
 // local_auth necesita una FragmentActivity para mostrar el diálogo biométrico.
@@ -44,6 +49,34 @@ class MainActivity : FlutterFragmentActivity() {
                     .addOnFailureListener { e -> result.error("mlkit", e.message, null) }
             } catch (e: Exception) {
                 result.error("image", e.message, null)
+            }
+        }
+
+        // Estados de cuenta en PDF: se leen en el teléfono. La contraseña no se registra.
+        MethodChannel(messenger, "outflow/pdf").setMethodCallHandler { call, result ->
+            if (call.method != "readText") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+            val path = call.argument<String>("path")
+            if (path == null) {
+                result.error("pdf", "No se pudo abrir el PDF.", null)
+                return@setMethodCallHandler
+            }
+            val password = call.argument<String>("password")
+            thread {
+                try {
+                    PDFBoxResourceLoader.init(applicationContext)
+                    val text = PDDocument.load(File(path), password ?: "").use { document ->
+                        PDFTextStripper().apply { sortByPosition = true }.getText(document)
+                    }
+                    runOnUiThread { result.success(text) }
+                } catch (e: InvalidPasswordException) {
+                    val code = if (password == null) "password_required" else "wrong_password"
+                    runOnUiThread { result.error(code, null, null) }
+                } catch (e: Throwable) {
+                    runOnUiThread { result.error("pdf", "No se pudo leer el PDF.", null) }
+                }
             }
         }
 

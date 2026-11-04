@@ -19,5 +19,9 @@ import UserNotifications
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "TextRecognitionPlugin") {
       TextRecognitionPlugin.register(with: registrar)
     }
+    // Lectura de estados de cuenta en PDF (canal outflow/pdf).
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "PdfTextPlugin") {
+      PdfTextPlugin.register(with: registrar)
+    }
   }
 }

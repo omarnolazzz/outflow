@@ -99,6 +99,16 @@ Map<String, int> computeBalances(List<WalletAccount> accounts, List<Movement> mo
   return balances;
 }
 
+/// Si [computeBalances] sumaría [m] al saldo de [account], dados los ajustes que hay
+/// en [movements]: lo anterior a la fecha inicial o a un ajuste no lo mueve.
+bool movesBalance(Movement m, WalletAccount account, List<Movement> movements, String defaultAccountId) {
+  if (!_countsIn(m, account, defaultAccountId) || m.date.isBefore(account.initialDate)) return false;
+  if (m.kind == MovementKind.adjustment) return true;
+  final checkpoints = _Checkpoints(movements.where((x) =>
+      x.kind == MovementKind.adjustment && (x.accountId ?? defaultAccountId) == account.id && _countsIn(x, account, defaultAccountId)));
+  return !checkpoints.covers(m);
+}
+
 /// Total por moneda de las cuentas sin archivar, sin convertir.
 Map<String, int> totalsByCurrency(List<WalletAccount> accounts, Map<String, int> balances) {
   final totals = <String, int>{};
