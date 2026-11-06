@@ -263,4 +263,12 @@ void main() {
     expect(WalletSettings.fromJson(s.toJson()).toJson(), s.toJson());
     expect(WalletSettings.fromJson(const {}).toJson(), const WalletSettings().toJson());
   });
+
+  test('WalletSettings.splitAccountIds viaja en JSON y un JSON antiguo la deja vacía', () {
+    expect(const WalletSettings().splitAccountIds, isEmpty);
+    final s = const WalletSettings().copyWith(splitAccountIds: const {'e1': 'A'});
+    expect(WalletSettings.fromJson(s.toJson()).splitAccountIds, {'e1': 'A'});
+    final old = const WalletSettings().toJson()..remove('splitAccountIds');
+    expect(WalletSettings.fromJson(old).splitAccountIds, isEmpty);
+  });
 }

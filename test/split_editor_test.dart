@@ -17,6 +17,7 @@ import 'package:outflow/features/receipts/domain/receipt.dart';
 import 'package:outflow/features/wallet/domain/apple_pay_link.dart';
 import 'package:outflow/features/wallet/domain/default_categories.dart';
 import 'package:outflow/features/wallet/domain/movement.dart';
+import 'package:outflow/features/wallet/domain/wallet_account.dart';
 import 'package:outflow/features/wallet/domain/wallet_settings.dart';
 import 'package:outflow/features/wallet/presentation/wallet_providers.dart';
 import 'package:outflow/features/wallet/presentation/widgets/movement_sheet.dart';
@@ -62,6 +63,8 @@ void main() {
     SharedExpense? editing,
     List<Movement> existing = const [],
     Widget? home,
+    List<WalletAccount> accounts = const [],
+    MemorySettings? settings,
   }) async {
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3;
@@ -72,7 +75,8 @@ void main() {
         nowProvider.overrideWithValue(now),
         socialRepositoryProvider.overrideWithValue(social),
         movementRepositoryProvider.overrideWithValue(movements),
-        walletSettingsRepositoryProvider.overrideWithValue(MemorySettings(const WalletSettings())),
+        walletSettingsRepositoryProvider.overrideWithValue(settings ?? MemorySettings(const WalletSettings())),
+        if (accounts.isNotEmpty) accountRepositoryProvider.overrideWithValue(MemoryAccounts(accounts, movements)),
         categoriesProvider.overrideWith((ref) => Stream.value(defaultCategories())),
         currentAccountProvider.overrideWithValue(
           const Account(uid: 'u', email: 'g@example.com', displayName: 'Gabriel Nolazco'),
@@ -287,6 +291,117 @@ void main() {
     final e = social.expenses.single;
     expect(e.paidBy, 'ana');
     expect(e.participants, containsAll(['u', 'ana', 'bea']));
+  });
+
+  group('cuenta de la que salió', () {
+    final bank = WalletAccount(
+      id: 'A',
+      name: 'Banco',
+      type: AccountType.bank,
+      currency: 'PEN',
+      initialMinor: 0,
+      initialDate: kAccountBeginning,
+      isDefault: true,
+    );
+    final savings = WalletAccount(
+      id: 'B',
+      name: 'Ahorros',
+      type: AccountType.bank,
+      currency: 'PEN',
+      initialMinor: 0,
+      initialDate: kAccountBeginning,
+    );
+
+    testWidgets('si pagas tú, eliges la cuenta y se guarda local para ese gasto', (tester) async {
+      final social = MemorySocial(friends: [ana]);
+      final settings = MemorySettings(const WalletSettings());
+      await pump(tester, social, draft: draft, accounts: [bank, savings], settings: settings);
+      expect(find.text('¿De qué cuenta salió?'), findsOneWidget);
+      await tapKey(tester, 'with-ana');
+      await tester.tap(find.text('Ahorros'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      expect(settings.value.splitAccountIds, {social.expenses.single.id: 'B'});
+    });
+
+    testWidgets('empieza con la cuenta elegida en la hoja de gasto', (tester) async {
+      final social = MemorySocial(friends: [ana]);
+      final settings = MemorySettings(const WalletSettings());
+      final fromSheet = SplitDraft(
+        totalMinor: 10000,
+        currency: 'PEN',
+        title: 'Cena',
+        date: now,
+        categoryId: 'food',
+        accountId: 'B',
+      );
+      await pump(tester, social, draft: fromSheet, accounts: [bank, savings], settings: settings);
+      await tapKey(tester, 'with-ana');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      expect(settings.value.splitAccountIds, {social.expenses.single.id: 'B'});
+    });
+
+    testWidgets('sin elegir nada usa la cuenta por defecto', (tester) async {
+      final social = MemorySocial(friends: [ana]);
+      final settings = MemorySettings(const WalletSettings());
+      await pump(tester, social, draft: draft, accounts: [bank, savings], settings: settings);
+      await tapKey(tester, 'with-ana');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      expect(settings.value.splitAccountIds, {social.expenses.single.id: 'A'});
+    });
+
+    testWidgets('si paga otra persona no se pregunta ni se guarda cuenta', (tester) async {
+      final social = MemorySocial(friends: [ana]);
+      final settings = MemorySettings(const WalletSettings());
+      await pump(tester, social, draft: draft, accounts: [bank, savings], settings: settings);
+      await tapKey(tester, 'paid-ana');
+      expect(find.text('¿De qué cuenta salió?'), findsNothing);
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      expect(settings.value.splitAccountIds, isEmpty);
+    });
+
+    testWidgets('al editar conserva la cuenta y cambiarla mueve el gasto de cuenta', (tester) async {
+      final e = SharedExpense(
+        id: 'e1',
+        createdBy: 'u',
+        paidBy: 'u',
+        participants: const ['u', 'ana'],
+        people: const {'u': me, 'ana': ana},
+        title: 'Cena',
+        date: DateTime(2026, 10, 19),
+        currency: 'PEN',
+        totalMinor: 6666,
+        categoryId: 'food',
+        mode: SplitMode.equal,
+        shares: const {'u': 3333, 'ana': 3333},
+        updatedAt: DateTime(2026, 10, 19),
+      );
+      final split = Movement(
+        id: 'split:e1',
+        kind: MovementKind.expense,
+        amount: const Money(3333, 'PEN'),
+        categoryId: 'food',
+        date: e.date,
+        createdAt: now,
+        origin: MovementOrigin.split,
+        accountId: 'A',
+        paidMinor: 6666,
+      );
+      final social = MemorySocial(friends: [ana], expenses: [e]);
+      final settings = MemorySettings(const WalletSettings(splitAccountIds: {'e1': 'A'}));
+      final movements = await pump(tester, social,
+          editing: e, existing: [split], accounts: [bank, savings], settings: settings);
+      await tester.tap(find.text('Ahorros'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      expect(settings.value.splitAccountIds, {'e1': 'B'});
+      expect(movements.saved.single.accountId, 'B');
+    });
   });
 
   group('edición', () {

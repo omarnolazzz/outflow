@@ -151,6 +151,7 @@ class _ReceiptResultScreenState extends ConsumerState<ReceiptResultScreen> {
       date: DateUtils.isSameDay(date, now) ? now : date,
       categoryId: categoryId,
       items: _items,
+      accountId: _account()?.id,
     );
     final saved = await showSplitEditor(context, draft: draft);
     if (saved && mounted) Navigator.of(context).pop();

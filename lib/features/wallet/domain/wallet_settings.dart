@@ -11,6 +11,7 @@ class WalletSettings {
     this.faceIdEnabled = false,
     this.deletedChargeIds = const {},
     this.dismissedSplitMatchIds = const {},
+    this.splitAccountIds = const {},
     this.ownerUid,
   });
 
@@ -32,6 +33,10 @@ class WalletSettings {
   /// pago?": no se vuelve a preguntar.
   final Set<String> dismissedSplitMatchIds;
 
+  /// Cuenta de la que salió cada gasto compartido que pagaste tú (id del gasto
+  /// → id de la cuenta). Solo en este teléfono: la wallet no sale de aquí.
+  final Map<String, String> splitAccountIds;
+
   /// Cuenta de Google dueña de esta wallet: otra cuenta no la abre.
   final String? ownerUid;
 
@@ -43,6 +48,7 @@ class WalletSettings {
     bool? faceIdEnabled,
     Set<String>? deletedChargeIds,
     Set<String>? dismissedSplitMatchIds,
+    Map<String, String>? splitAccountIds,
     String? ownerUid,
   }) =>
       WalletSettings(
@@ -53,6 +59,7 @@ class WalletSettings {
         faceIdEnabled: faceIdEnabled ?? this.faceIdEnabled,
         deletedChargeIds: deletedChargeIds ?? this.deletedChargeIds,
         dismissedSplitMatchIds: dismissedSplitMatchIds ?? this.dismissedSplitMatchIds,
+        splitAccountIds: splitAccountIds ?? this.splitAccountIds,
         ownerUid: ownerUid ?? this.ownerUid,
       );
 
@@ -64,6 +71,7 @@ class WalletSettings {
         'faceIdEnabled': faceIdEnabled,
         'deletedChargeIds': (deletedChargeIds.toList()..sort()),
         'dismissedSplitMatchIds': (dismissedSplitMatchIds.toList()..sort()),
+        'splitAccountIds': splitAccountIds,
         'ownerUid': ownerUid,
       };
 
@@ -77,6 +85,7 @@ class WalletSettings {
       faceIdEnabled: json['faceIdEnabled'] as bool? ?? false,
       deletedChargeIds: {...?(json['deletedChargeIds'] as List?)?.cast<String>()},
       dismissedSplitMatchIds: {...?(json['dismissedSplitMatchIds'] as List?)?.cast<String>()},
+      splitAccountIds: {...?(json['splitAccountIds'] as Map?)?.cast<String, String>()},
       ownerUid: json['ownerUid'] as String?,
     );
   }

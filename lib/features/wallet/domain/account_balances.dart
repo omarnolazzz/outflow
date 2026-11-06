@@ -40,6 +40,10 @@ bool _countsIn(Movement m, WalletAccount account, String defaultAccountId) {
   return m.transferIncoming && m.receivedMinor != null && (m.accountId ?? defaultAccountId) == account.id;
 }
 
+/// Solo un ajuste de saldo hecho por el usuario es punto de control: saldar una
+/// deuda con un amigo mueve la cuenta, pero no dice cuánto hay de verdad.
+bool _isCheckpoint(Movement m) => m.kind == MovementKind.adjustment && m.origin != MovementOrigin.settlement;
+
 /// Los ajustes de una cuenta como puntos de control: al ajustar, el usuario dijo
 /// su saldo real, y ese saldo ya incluía lo ocurrido hasta entonces.
 class _Checkpoints {
@@ -82,7 +86,7 @@ class _Checkpoints {
 Map<String, int> computeBalances(List<WalletAccount> accounts, List<Movement> movements) {
   final defaultId = defaultAccountOf(accounts)?.id;
   if (defaultId == null) return {};
-  final adjustments = movements.where((m) => m.kind == MovementKind.adjustment).toList();
+  final adjustments = movements.where(_isCheckpoint).toList();
   final balances = <String, int>{};
   for (final a in accounts) {
     final checkpoints = _Checkpoints(
@@ -105,7 +109,7 @@ bool movesBalance(Movement m, WalletAccount account, List<Movement> movements, S
   if (!_countsIn(m, account, defaultAccountId) || m.date.isBefore(account.initialDate)) return false;
   if (m.kind == MovementKind.adjustment) return true;
   final checkpoints = _Checkpoints(movements.where((x) =>
-      x.kind == MovementKind.adjustment && (x.accountId ?? defaultAccountId) == account.id && _countsIn(x, account, defaultAccountId)));
+      _isCheckpoint(x) && (x.accountId ?? defaultAccountId) == account.id && _countsIn(x, account, defaultAccountId)));
   return !checkpoints.covers(m);
 }
 

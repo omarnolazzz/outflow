@@ -8,6 +8,8 @@ import 'package:outflow/features/friends/domain/shared_expense.dart';
 import 'package:outflow/features/friends/presentation/friends_providers.dart';
 import 'package:outflow/features/friends/presentation/friends_screen.dart';
 import 'package:outflow/features/friends/presentation/split_editor_screen.dart';
+import 'package:outflow/features/wallet/domain/movement.dart';
+import 'package:outflow/features/wallet/domain/wallet_account.dart';
 import 'package:outflow/features/wallet/presentation/wallet_providers.dart';
 
 import 'support/fakes.dart';
@@ -15,8 +17,8 @@ import 'support/fakes.dart';
 const me = Person(uid: 'u', name: 'Gabriel Nolazco', email: 'g@example.com');
 const ana = Person(uid: 'ana', name: 'Ana Pérez', email: 'ana@x.com');
 
-SharedExpense dinner({String createdBy = 'u', String paidBy = 'u', bool settled = false}) => SharedExpense(
-      id: 'e1',
+SharedExpense dinner({String id = 'e1', String createdBy = 'u', String paidBy = 'u', bool settled = false}) => SharedExpense(
+      id: id,
       createdBy: createdBy,
       paidBy: paidBy,
       participants: const ['u', 'ana'],
@@ -35,7 +37,7 @@ SharedExpense dinner({String createdBy = 'u', String paidBy = 'u', bool settled 
 void main() {
   late MemoryMovements movements;
 
-  Future<void> pump(WidgetTester tester, SocialRepository social) async {
+  Future<void> pump(WidgetTester tester, SocialRepository social, {List<WalletAccount> accounts = const []}) async {
     movements = MemoryMovements();
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3;
@@ -44,12 +46,20 @@ void main() {
       overrides: [
         socialRepositoryProvider.overrideWithValue(social),
         movementRepositoryProvider.overrideWithValue(movements),
+        if (accounts.isNotEmpty) ...[
+          accountRepositoryProvider.overrideWithValue(MemoryAccounts(accounts, movements)),
+          walletSettingsRepositoryProvider.overrideWithValue(MemorySettings()),
+        ],
         currentAccountProvider.overrideWithValue(
           const Account(uid: 'u', email: 'g@example.com', displayName: 'Gabriel Nolazco'),
         ),
       ],
       child: const MaterialApp(home: FriendsScreen()),
     ));
+    // La app ya escucha las cuentas desde Inicio; aquí hay que hacerlo a mano.
+    if (accounts.isNotEmpty) {
+      ProviderScope.containerOf(tester.element(find.byType(FriendsScreen))).listen(accountsProvider, (_, _) {});
+    }
     await tester.pumpAndSettle();
   }
 
@@ -249,5 +259,93 @@ void main() {
     await tester.pumpAndSettle();
     expect(social.expenses.single.isSettled('ana'), isTrue);
     expect(find.text('Pagado'), findsWidgets);
+  });
+
+  group('saldar mueve la cuenta si lo eliges', () {
+    final bank = WalletAccount(
+      id: 'A',
+      name: 'Banco',
+      type: AccountType.bank,
+      currency: 'PEN',
+      initialMinor: 0,
+      initialDate: kAccountBeginning,
+      isDefault: true,
+    );
+
+    Future<void> openDinner(WidgetTester tester) async {
+      await tester.tap(find.text('Ana Pérez').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cena'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('te paga un amigo: entra su parte en la cuenta elegida', (tester) async {
+      final social = MemorySocial(friends: [ana], expenses: [dinner()]);
+      await pump(tester, social, accounts: [bank]);
+      await openDinner(tester);
+      await tester.tap(find.text('Marcar como pagado'));
+      await tester.pumpAndSettle();
+      expect(social.expenses.single.isSettled('ana'), isTrue, reason: 'se salda antes de preguntar la cuenta');
+      expect(find.text('¿En qué cuenta?'), findsOneWidget);
+      await tester.tap(find.text('Banco'));
+      await tester.pumpAndSettle();
+      final s = movements.saved.single;
+      expect(s.id, 'settle:e1:ana');
+      expect(s.origin, MovementOrigin.settlement);
+      expect(s.adjustmentMinor, 3333);
+      expect(s.accountId, 'A');
+    });
+
+    testWidgets('pagas tu deuda: sale de la cuenta elegida', (tester) async {
+      final social = MemorySocial(friends: [ana], expenses: [dinner(createdBy: 'ana', paidBy: 'ana')]);
+      await pump(tester, social, accounts: [bank]);
+      await openDinner(tester);
+      await tester.tap(find.text('Marcar como pagado'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Banco'));
+      await tester.pumpAndSettle();
+      expect(movements.saved.single.adjustmentMinor, -3333);
+    });
+
+    testWidgets('Ninguna salda sin crear ningún movimiento', (tester) async {
+      final social = MemorySocial(friends: [ana], expenses: [dinner()]);
+      await pump(tester, social, accounts: [bank]);
+      await openDinner(tester);
+      await tester.tap(find.text('Marcar como pagado'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ninguna'));
+      await tester.pumpAndSettle();
+      expect(social.expenses.single.isSettled('ana'), isTrue);
+      expect(movements.saved, isEmpty);
+    });
+
+    testWidgets('cerrar la hoja sin elegir tampoco bloquea el saldado', (tester) async {
+      final social = MemorySocial(friends: [ana], expenses: [dinner()]);
+      await pump(tester, social, accounts: [bank]);
+      await openDinner(tester);
+      await tester.tap(find.text('Marcar como pagado'));
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+      expect(social.expenses.single.isSettled('ana'), isTrue);
+      expect(movements.saved, isEmpty);
+    });
+
+    testWidgets('Saldar todo pregunta la cuenta una sola vez', (tester) async {
+      final two = dinner(id: 'e2').copyWith(title: 'Almuerzo');
+      final social = MemorySocial(friends: [ana], expenses: [dinner(), two]);
+      await pump(tester, social, accounts: [bank]);
+      await tester.tap(find.text('Ana Pérez').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Saldar todo'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Saldar'));
+      await tester.pumpAndSettle();
+      expect(find.text('¿En qué cuenta?'), findsOneWidget);
+      await tester.tap(find.text('Banco'));
+      await tester.pumpAndSettle();
+      expect(movements.saved.map((m) => m.id).toSet(), {'settle:e1:ana', 'settle:e2:ana'});
+      expect(find.text('¿En qué cuenta?'), findsNothing);
+    });
   });
 }

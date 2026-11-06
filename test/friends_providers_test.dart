@@ -39,6 +39,7 @@ void main() {
         MemorySocial(friends: [ana], expenses: [owed('e-ana', by: ana), owed('e-eve', by: eve)]),
       ),
       movementRepositoryProvider.overrideWithValue(movements),
+      walletSettingsRepositoryProvider.overrideWithValue(MemorySettings()),
       categoriesProvider.overrideWith((ref) => Stream.value(defaultCategories())),
       currentAccountProvider.overrideWithValue(
         const Account(uid: 'u', email: 'g@example.com', displayName: 'Gabriel Nolazco'),

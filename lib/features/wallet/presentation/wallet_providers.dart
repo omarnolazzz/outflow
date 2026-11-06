@@ -162,6 +162,13 @@ class WalletActions {
     await _settings.save(s.copyWith(dismissedSplitMatchIds: {...s.dismissedSplitMatchIds, expenseId}));
   }
 
+  /// Recuerda de qué cuenta salió el gasto compartido [expenseId] (solo en el teléfono).
+  Future<void> setSplitAccount(String expenseId, String accountId) async {
+    final s = _settings.read();
+    if (s.splitAccountIds[expenseId] == accountId) return;
+    await _settings.save(s.copyWith(splitAccountIds: {...s.splitAccountIds, expenseId: accountId}));
+  }
+
   Future<void> restore(Movement m) async {
     final s = _settings.read();
     if (s.deletedChargeIds.contains(m.id)) {

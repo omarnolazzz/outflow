@@ -24,12 +24,14 @@ import '../../receipts/domain/receipt.dart';
 import '../../wallet/domain/category.dart';
 import '../../wallet/domain/movement.dart';
 import '../../wallet/domain/payment_match.dart';
+import '../../wallet/presentation/widgets/account_picker.dart';
 import '../../wallet/presentation/wallet_providers.dart';
 import '../../wallet/presentation/widgets/category_icon.dart';
 import '../../wallet/presentation/widgets/match_payment_sheet.dart';
 import '../domain/shared_expense.dart';
 import '../domain/split_math.dart';
 import 'friends_format.dart';
+import '../domain/split_movements.dart';
 import 'friends_providers.dart';
 
 /// Gasto a repartir que llega de fuera del editor (hoja de gasto, ticket).
@@ -42,6 +44,7 @@ class SplitDraft {
     required this.date,
     required this.categoryId,
     this.items = const [],
+    this.accountId,
   });
 
   final int totalMinor;
@@ -52,6 +55,9 @@ class SplitDraft {
 
   /// Productos del ticket; con ellos se puede repartir por productos.
   final List<ReceiptItem> items;
+
+  /// Cuenta elegida en la hoja de gasto o el ticket: de ahí salió el dinero.
+  final String? accountId;
 }
 
 /// Abre el editor para dividir un gasto nuevo (con [draft] o en blanco) o
@@ -78,6 +84,15 @@ class SplitEditorScreen extends ConsumerStatefulWidget {
 class _SplitEditorScreenState extends ConsumerState<SplitEditorScreen> {
   late final AmountInput _amount = AmountInput()
     ..setMinor(widget.editing?.totalMinor ?? widget.draft?.totalMinor ?? 0);
+  /// Cuenta elegida aquí o traída de la hoja de gasto; null = la guardada del
+  /// gasto (al editar) o la por defecto.
+  late String? _accountId = widget.editing == null ? widget.draft?.accountId : null;
+
+  /// Cuenta guardada para el gasto que se edita (solo en este teléfono).
+  String? _storedAccount() {
+    final id = widget.editing?.id;
+    return id == null ? null : ref.read(walletSettingsProvider).value?.splitAccountIds[id];
+  }
   late final _title = TextEditingController(text: widget.editing?.title ?? widget.draft?.title ?? '');
   late DateTime? _date = widget.editing?.date ?? widget.draft?.date;
   late String? _categoryId = widget.editing?.categoryId ?? widget.draft?.categoryId;
@@ -285,6 +300,7 @@ class _SplitEditorScreenState extends ConsumerState<SplitEditorScreen> {
     final date = _date ?? now;
     final title = _title.text.trim();
     final editing = widget.editing;
+    final newId = const Uuid().v4();
 
     // Un gasto nuevo puede ser un pago que ya está en la wallet (Google Pay, Apple Pay...).
     Movement? matched;
@@ -306,11 +322,30 @@ class _SplitEditorScreenState extends ConsumerState<SplitEditorScreen> {
       }
     }
 
+    // Solo si pagaste tú sale dinero de tu cuenta; se guarda solo en el teléfono.
+    // Antes de guardar el gasto, para que su movimiento nazca ya con la cuenta.
+    if (_paidBy == me.uid) {
+      final selectable = selectableAccounts(ref.read(activeAccountsProvider), currency: _currency());
+      final wanted = _accountId ?? _storedAccount();
+      final accountId = selectable.any((a) => a.id == wanted) ? wanted : resolveAccount(selectable, null)?.id;
+      final stored = _storedAccount();
+      if (accountId != null && accountId != stored) {
+        final id = editing?.id ?? newId;
+        await ref.read(walletActionsProvider).setSplitAccount(id, accountId);
+        // Cambiar la cuenta de un reparto ya guardado mueve también su movimiento.
+        final split = movements.where((m) => m.id == splitMovementId(id)).firstOrNull;
+        if (editing != null && split != null && split.accountId != accountId) {
+          await ref.read(walletActionsProvider).save(split.copyWith(accountId: accountId));
+        }
+      }
+    }
+
+    if (!mounted) return;
     final byUid = {for (final p in everyone) p.uid: p};
     final people = {for (final u in participants) u: byUid[u]!};
     final expense = editing == null
         ? SharedExpense(
-            id: const Uuid().v4(),
+            id: newId,
             createdBy: me.uid,
             paidBy: _paidBy!,
             participants: participants,
@@ -526,6 +561,16 @@ class _SplitEditorScreenState extends ConsumerState<SplitEditorScreen> {
                   ),
               ],
             )),
+            if (_paidBy == me.uid)
+              e(Padding(
+                padding: const EdgeInsets.only(top: 18),
+                child: AccountPicker(
+                  selectedId: _accountId ?? ref.watch(walletSettingsProvider).value?.splitAccountIds[widget.editing?.id],
+                  label: '¿De qué cuenta salió?',
+                  currency: currency,
+                  onChanged: (a) => setState(() => _accountId = a.id),
+                ),
+              )),
             e(const SectionHeader('Entre')),
             e(Wrap(
               spacing: 8,

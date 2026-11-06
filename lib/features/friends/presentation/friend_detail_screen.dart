@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/di/core_providers.dart';
 import '../../../core/domain/money.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
@@ -10,7 +11,9 @@ import '../../../core/widgets/sheet_scaffold.dart';
 import '../../../core/widgets/status_pill.dart';
 import '../../../core/widgets/surface_card.dart';
 import '../../account/presentation/session_controller.dart';
+import '../../wallet/presentation/wallet_providers.dart';
 import '../domain/shared_expense.dart';
+import '../domain/split_movements.dart';
 import 'friends_format.dart';
 import 'friends_providers.dart';
 import 'split_editor_screen.dart';
@@ -53,6 +56,8 @@ class _FriendDetailScreenState extends ConsumerState<FriendDetailScreen> {
     for (final e in pending) {
       fireWrite(context, repo.settle(e.id, _debtor(e, me)!));
     }
+    // Ya saldado: la cuenta es opcional y se pregunta una sola vez para todos.
+    await offerSettlementAccount(context, ref, me, [for (final e in pending) (expense: e, debtor: _debtor(e, me)!)]);
   }
 
   @override
@@ -197,7 +202,9 @@ Future<void> showExpenseActions(
   final repo = ref.read(socialRepositoryProvider);
   if (action.startsWith('settle:')) {
     // Sin esperar: offline las escrituras no terminan; los streams se actualizan solos.
-    fireWrite(context, repo.settle(e.id, action.substring('settle:'.length)));
+    final debtor = action.substring('settle:'.length);
+    fireWrite(context, repo.settle(e.id, debtor));
+    await offerSettlementAccount(context, ref, me, [(expense: e, debtor: debtor)]);
   } else if (action == 'edit') {
     await showSplitEditor(context, editing: e);
   } else if (action == 'delete') {
@@ -214,4 +221,61 @@ Future<void> showExpenseActions(
     );
     if (ok == true && context.mounted) fireWrite(context, repo.deleteExpense(e.id));
   }
+}
+
+/// Tras saldar, pregunta en qué cuenta se movió el dinero y lo apunta. Es
+/// opcional: **Ninguna** (o cerrar la hoja) deja el saldado sin tocar ninguna
+/// cuenta, y nunca bloquea el saldado, que ya se envió. Solo aparece si
+/// intervienes en alguna de las deudas y hay una cuenta en su moneda.
+Future<void> offerSettlementAccount(
+  BuildContext context,
+  WidgetRef ref,
+  String me,
+  List<({SharedExpense expense, String debtor})> settled,
+) async {
+  // Las cuentas pueden no estar cargadas aún (nadie las escuchaba).
+  try {
+    await ref.read(accountsProvider.future);
+  } catch (_) {
+    return;
+  }
+  if (!context.mounted) return;
+  final involved = [
+    for (final s in settled)
+      if (makeSettlementMovement(e: s.expense, debtor: s.debtor, me: me, accountId: '-', now: DateTime(0)) != null) s,
+  ];
+  final currencies = {for (final s in involved) s.expense.currency};
+  final options = [
+    for (final a in ref.read(activeAccountsProvider))
+      if (currencies.contains(a.currency)) a,
+  ];
+  if (involved.isEmpty || options.isEmpty || !context.mounted) return;
+  final picked = await showModalBottomSheet<String>(
+    useRootNavigator: true,
+    context: context,
+    backgroundColor: AppColors.surface,
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Align(alignment: Alignment.centerLeft, child: Text('¿En qué cuenta?', style: AppType.title2)),
+          ),
+          for (final a in options) ListTile(title: Text(a.name), onTap: () => Navigator.pop(ctx, a.id)),
+          ListTile(title: const Text('Ninguna'), onTap: () => Navigator.pop(ctx)),
+        ],
+      ),
+    ),
+  );
+  if (picked == null) return;
+  final account = options.where((a) => a.id == picked).firstOrNull;
+  if (account == null) return;
+  final now = ref.read(nowProvider);
+  final movements = [
+    for (final s in involved)
+      if (s.expense.currency == account.currency)
+        ?makeSettlementMovement(e: s.expense, debtor: s.debtor, me: me, accountId: account.id, now: now),
+  ];
+  if (movements.isNotEmpty) await ref.read(walletActionsProvider).saveAll(movements);
 }

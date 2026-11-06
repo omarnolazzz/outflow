@@ -141,6 +141,7 @@ class _MovementSheetState extends ConsumerState<MovementSheet> {
         title: _title.text.trim(),
         date: DateUtils.isSameDay(date, now) ? now : date,
         categoryId: categoryId,
+        accountId: accountId,
       );
       // El editor se abre encima: si se cierra sin guardar, la hoja sigue
       // aquí con el pago intacto; solo se cierra cuando el reparto se guarda.

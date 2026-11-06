@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/config/firebase_config.dart';
+import '../../../core/di/core_providers.dart';
 import '../../account/presentation/session_controller.dart';
 import '../../wallet/presentation/wallet_providers.dart';
 import '../data/firestore_social_repository.dart';
@@ -84,10 +85,12 @@ final splitMovementSyncProvider = Provider<void>((ref) {
   final snapshot = ref.watch(trustedExpensesProvider);
   final movements = ref.watch(movementsProvider).value;
   final categories = ref.watch(categoriesProvider).value;
+  final settings = ref.watch(walletSettingsProvider).value;
   if (account == null ||
       snapshot == null ||
       movements == null ||
-      categories == null) {
+      categories == null ||
+      settings == null) {
     return;
   }
 
@@ -96,6 +99,8 @@ final splitMovementSyncProvider = Provider<void>((ref) {
     existing: movements,
     myUid: account.uid,
     categoryIds: {for (final c in categories) c.id},
+    splitAccountIds: settings.splitAccountIds,
+    now: ref.read(nowProvider),
   );
   if (changes.upsert.isEmpty && changes.delete.isEmpty) return;
   final repo = ref.read(movementRepositoryProvider);
