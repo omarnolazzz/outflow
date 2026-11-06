@@ -332,7 +332,10 @@ class _SplitEditorScreenState extends ConsumerState<SplitEditorScreen> {
       // Al editar solo se toca la cuenta si el usuario la cambió en el selector.
       final String? accountId;
       if (editing == null) {
-        accountId = selectable.any((a) => a.id == _accountId) ? _accountId : resolveAccount(selectable, null)?.id;
+        // Si es un pago que ya estaba en la wallet y no elegiste cuenta, el
+        // dinero salió de la cuenta de ese pago (null = la por defecto).
+        final wanted = _accountId ?? matched?.accountId;
+        accountId = selectable.any((a) => a.id == wanted) ? wanted : resolveAccount(selectable, null)?.id;
       } else {
         accountId = _accountId;
       }
@@ -399,7 +402,25 @@ class _SplitEditorScreenState extends ConsumerState<SplitEditorScreen> {
                 if (!expense.settled.containsKey(k)) k,
             }),
     );
-    if (matched != null) await ref.read(walletActionsProvider).delete(matched.id);
+    if (matched != null) {
+      // Tu parte nace ya con el rastro del pago que reemplaza (referencia del
+      // banco, captura fundida): así una captura o un estado de cuenta posterior
+      // la reconocen. La conciliación conserva estos campos.
+      final split = reconcileSplitMovements(
+        snapshot: ExpensesSnapshot([expense], fromCache: true),
+        existing: const [],
+        myUid: me.uid,
+        categoryIds: {categoryId},
+        splitAccountIds: ref.read(walletSettingsRepositoryProvider).read().splitAccountIds,
+        now: now,
+      ).upsert.firstOrNull;
+      if (split != null) {
+        await ref.read(walletActionsProvider).save(
+              split.copyWith(externalRef: matched.externalRef, pairedCaptureId: matched.pairedCaptureId),
+            );
+      }
+      await ref.read(walletActionsProvider).delete(matched.id);
+    }
     HapticFeedback.mediumImpact();
     if (!mounted) return;
     Navigator.of(context).pop(true);

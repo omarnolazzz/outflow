@@ -11,9 +11,11 @@ import 'package:outflow/core/widgets/primary_button.dart';
 import 'package:outflow/features/account/domain/account.dart';
 import 'package:outflow/features/account/presentation/session_controller.dart';
 import 'package:outflow/features/friends/domain/shared_expense.dart';
+import 'package:outflow/features/friends/domain/split_movements.dart';
 import 'package:outflow/features/friends/presentation/friends_providers.dart';
 import 'package:outflow/features/friends/presentation/split_editor_screen.dart';
 import 'package:outflow/features/receipts/domain/receipt.dart';
+import 'package:outflow/features/wallet/domain/account_balances.dart';
 import 'package:outflow/features/wallet/domain/apple_pay_link.dart';
 import 'package:outflow/features/wallet/domain/default_categories.dart';
 import 'package:outflow/features/wallet/domain/movement.dart';
@@ -206,7 +208,8 @@ void main() {
     expect(find.text('¿Es este pago?'), findsOneWidget);
     await tester.tap(find.text('Restaurante'));
     await tester.pumpAndSettle();
-    expect(movements.saved, isEmpty);
+    // El pago se reemplaza por tu parte del reparto.
+    expect(movements.saved.map((m) => m.id), [splitMovementId(social.expenses.single.id)]);
     expect(social.expenses, hasLength(1));
     expect(find.byType(SplitEditorScreen), findsNothing);
   });
@@ -254,7 +257,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(social.saves, hasLength(1));
     expect(find.byType(SplitEditorScreen), findsNothing);
-    expect(movements.saved, isEmpty);
+    expect(movements.saved.map((m) => m.id), [splitMovementId(social.saves.single.id)]);
   });
 
   testWidgets('un error al guardar avisa con un SnackBar', (tester) async {
@@ -441,6 +444,76 @@ void main() {
       expect(settings.value.splitAccountIds, {'e1': 'B'});
       expect(movements.saved.single.accountId, 'B');
     });
+  });
+
+  testWidgets('dividir entre 4 un pago capturado en Scotiabank ("es el mismo") baja Scotiabank, no la por defecto',
+      (tester) async {
+    const bea = Person(uid: 'bea', name: 'Bea Ruiz', email: 'bea@x.com');
+    const ceci = Person(uid: 'ceci', name: 'Ceci Díaz', email: 'ceci@x.com');
+    final mine = WalletAccount(
+      id: 'A',
+      name: 'Mi cuenta',
+      type: AccountType.bank,
+      currency: 'PEN',
+      initialMinor: 0,
+      initialDate: kAccountBeginning,
+      isDefault: true,
+    );
+    final scotia = WalletAccount(
+      id: 'S',
+      name: 'Scotiabank',
+      type: AccountType.bank,
+      currency: 'PEN',
+      initialMinor: 0,
+      initialDate: kAccountBeginning,
+    );
+    final captured = Movement(
+      id: 'cap',
+      kind: MovementKind.expense,
+      amount: const Money(10000, 'PEN'),
+      categoryId: 'food',
+      date: now.subtract(const Duration(hours: 1)),
+      createdAt: now.subtract(const Duration(hours: 1)),
+      title: 'Restaurante',
+      origin: MovementOrigin.capture,
+      accountId: 'S',
+      externalRef: 'OP-123',
+      pairedCaptureId: 'evt-1',
+    );
+    final social = MemorySocial(friends: [ana, bea, ceci]);
+    final settings = MemorySettings(const WalletSettings());
+    final movements = await pump(tester, social,
+        draft: draft, existing: [captured], accounts: [mine, scotia], settings: settings);
+    await tapKey(tester, 'with-ana');
+    await tapKey(tester, 'with-bea');
+    await tapKey(tester, 'with-ceci');
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
+    expect(find.text('¿Es este pago?'), findsOneWidget);
+    await tester.tap(find.text('Restaurante'));
+    await tester.pumpAndSettle();
+
+    final e = social.expenses.single;
+    expect(settings.value.splitAccountIds, {e.id: 'S'});
+    // La conciliación con el servidor no pierde nada de lo que se heredó.
+    final changes = reconcileSplitMovements(
+      snapshot: ExpensesSnapshot([e], fromCache: false),
+      existing: movements.saved,
+      myUid: 'u',
+      categoryIds: {for (final c in defaultCategories()) c.id},
+      splitAccountIds: settings.value.splitAccountIds,
+      now: now,
+    );
+    await movements.saveAll(changes.upsert);
+    await movements.deleteAll(changes.delete);
+    final split = movements.saved.single;
+    expect(split.id, splitMovementId(e.id));
+    expect(split.amount.minor, 2500);
+    expect(split.externalRef, 'OP-123');
+    expect(split.pairedCaptureId, 'evt-1');
+    final balances = computeBalances([mine, scotia], movements.saved);
+    expect(balances['S'], -10000);
+    expect(balances['A'], 0);
   });
 
   group('edición', () {
