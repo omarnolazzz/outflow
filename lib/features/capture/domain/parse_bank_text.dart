@@ -153,7 +153,9 @@ final _blockers = RegExp(
   '$_failed|'
   r'codigo de (?:verificacion|seguridad)|clave dinamica|\bclave\b|\btoken\b|\botp\b|para (?:autorizar|confirmar|aprobar)|\bvence\b|vencimiento|'
   r'\brecuerda\b|recordatorio|programad|proxim[oa] (?:pago|cobro|cargo)|aprovecha|\boferta|promocion|sorteo|prestamo|pre-?aprobad|'
-  r'\bsolicit|te regalamos|\bgana\b|\bganar\b|llevate|participa|regalo|gratis|pendiente|problema|estado de cuenta',
+  r'\bsolicit|te regalamos|\bgana\b|\bganar\b|llevate|participa|regalo|gratis|pendiente|problema|estado de cuenta|'
+  // Promociones: "por tu consumo de S/ 200 o más, te devolvemos S/ 20".
+  r'te devolvemos|devolveremos|cashback|\bo mas\b|\ba partir de\b|\bdesde s/',
 );
 
 final _lemonPhrase = RegExp(r'realizaste un envio exitoso de\s');

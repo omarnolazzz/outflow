@@ -205,6 +205,22 @@ void main() {
       expect(parse('Préstamo de S/ 5,000 para ti'), isNull);
     });
 
+    test('las promociones del banco no son cargos', () {
+      expect(parse('BCP: Por tu consumo de S/ 200 o más, te devolvemos S/ 20'), isNull);
+      expect(parse('Consumos de S/ 150 o mas y te devolveremos S/ 15 en tu cuenta'), isNull);
+      expect(parse('Cashback de S/ 10.00 en compras con tu tarjeta'), isNull);
+      expect(parse('Compras a partir de S/ 50.00 con tu tarjeta Visa'), isNull);
+      expect(parse('Tu consumo desde S/ 80.00 participa en el sorteo'), isNull);
+      expect(parse('Por tu compra de S/ 100.00 llévate S/ 10.00 de regalo'), isNull);
+      expect(parse('Consume S/ 100.00 y gana S/ 20.00'), isNull);
+    });
+
+    test('una devolución hecha sigue siendo un ingreso', () {
+      final p = parse('Devolución de S/ 30.00 en Tienda')!;
+      expect(p.amountMinor, 3000);
+      expect(p.direction, CaptureDirection.inbound);
+    });
+
     test('un pie de correo no anula un pago hecho', () {
       expect(parse('Pagaste S/ 25.00 en Tambo.\nSi un pago fue rechazado, llámanos. Aprovecha nuestras ofertas.')!.amountMinor, 2500);
     });
