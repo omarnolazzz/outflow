@@ -41,6 +41,47 @@ void main() {
     });
   });
 
+  group('maskNames', () {
+    test('tapa el titular con o sin acentos, en mayúsculas y cortado', () {
+      const names = ['Lucía Prueba Ejemplo'];
+      final masked = maskNames('Titular: LUCIA PRUEBA EJEMPLO\nDale-Lucía Prueba Ejem -4.00\nYape-Mario Otro 20.00', names).toLowerCase();
+      for (final part in ['lucia', 'lucía', 'prueba', 'ejem']) {
+        expect(masked, isNot(contains(part)), reason: part);
+      }
+      expect(masked, contains('mario otro 20.00'));
+      expect(masked, contains('-4.00'));
+      expect(masked, contains('dale-'));
+    });
+
+    test('una línea de titular se tapa entera aunque no se sepa el nombre', () {
+      expect(maskNames('Titular: Otra Persona Ejemplo\n1/10 Compra -1.00', const []), isNot(contains('Otra')));
+      // Así llega una fila de Excel o CSV ("Titular: | <nombre>").
+      expect(maskNames('Titular: | Otra Persona Ejemplo |', const []), isNot(contains('Otra')));
+    });
+
+    test('no tapa palabras que solo empiezan igual', () {
+      expect(maskNames('Ejecutivo pruebas', const ['Lucía Prueba Ejemplo']), 'Ejecutivo pruebas');
+    });
+
+    test('el lector no envía el nombre', () async {
+      String? sent;
+      final reader = GeminiStatementReader(
+        MockClient((req) async {
+          sent = req.body;
+          return http.Response('no', 500);
+        }),
+        apiKey: 'k',
+        model: 'm',
+      );
+      await expectLater(
+        reader.read('Titular: Lucía Prueba\n01/10 Compra -45.58', now: DateTime(2026, 11, 3), names: const ['Lucía Prueba']),
+        throwsA(isA<StatementAiFailed>()),
+      );
+      expect(sent!.toLowerCase(), isNot(contains('prueba')));
+      expect(sent, contains('-45.58'));
+    });
+  });
+
   group('GeminiStatementReader', () {
     http.Response reply(Map<String, Object?> json) => http.Response.bytes(
           utf8.encode(jsonEncode({

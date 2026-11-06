@@ -120,12 +120,14 @@ Map<String, int> totalsByCurrency(List<WalletAccount> accounts, Map<String, int>
 }
 
 /// Movimiento que lleva el saldo de [account] de [currentMinor] a [realMinor];
-/// null si no hay diferencia.
+/// null si no hay diferencia. [date] es el instante del saldo real (por defecto,
+/// [now]); [now] es cuándo se apunta.
 Movement? makeAdjustment({
   required WalletAccount account,
   required int currentMinor,
   required int realMinor,
   required DateTime now,
+  DateTime? date,
 }) {
   final difference = realMinor - currentMinor;
   if (difference == 0) return null;
@@ -134,7 +136,7 @@ Movement? makeAdjustment({
     kind: MovementKind.adjustment,
     amount: Money(difference.abs(), account.currency),
     categoryId: kNoCategoryId,
-    date: now,
+    date: date ?? now,
     createdAt: now,
     title: 'Ajuste de saldo',
     accountId: account.id,

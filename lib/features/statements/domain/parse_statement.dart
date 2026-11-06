@@ -454,3 +454,42 @@ String maskSensitive(String text) => text.replaceAllMapped(_protectedOrDigits, (
       if (digits < 8) return '$sequence$tail';
       return '${sequence.replaceAll(RegExp(r'\d'), '*')}$tail';
     });
+
+const _accentClasses = {
+  'a': '[aáàäâ]',
+  'e': '[eéèëê]',
+  'i': '[iíìïî]',
+  'o': '[oóòöô]',
+  'u': '[uúùüû]',
+  'n': '[nñ]',
+};
+
+/// Una palabra del titular, sin distinguir acentos ni mayúsculas, entera o cortada
+/// por el banco (al menos 3 letras), y nunca dentro de otra palabra.
+RegExp _nameWord(String word) {
+  final chars = [for (final ch in word.split('')) _accentClasses[ch] ?? RegExp.escape(ch)];
+  var tail = '';
+  for (var i = chars.length - 1; i >= 3; i--) {
+    tail = '(?:${chars[i]}$tail)?';
+  }
+  return RegExp('(?<![\\p{L}\\p{N}])${chars.take(3).join()}$tail(?![\\p{L}\\p{N}])', caseSensitive: false, unicode: true);
+}
+
+final _holderLine = RegExp(r'((?:titular|cliente)\s*[:|][\s:|]*)([^\n|]*)', caseSensitive: false);
+
+/// Tapa el nombre del titular ([names]: el del archivo y el de la cuenta de Google)
+/// y lo que siga a "Titular:" o "Cliente:", antes de enviar texto a la IA. El
+/// reconocimiento de cuentas propias se hace en el teléfono con el texto original.
+String maskNames(String text, Iterable<String?> names) {
+  var out = text.replaceAllMapped(_holderLine, (m) => '${m[1]}${m[2]!.replaceAll(RegExp(r'\S'), '*')}');
+  final words = <String>{
+    for (final name in names)
+      if (name != null)
+        for (final w in normalizeMerchant(name).split(' '))
+          if (w.length >= 3) w,
+  };
+  for (final w in words) {
+    out = out.replaceAllMapped(_nameWord(w), (m) => '*' * m[0]!.length);
+  }
+  return out;
+}

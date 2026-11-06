@@ -27,7 +27,9 @@ import '../domain/import_statement.dart';
 import '../domain/parse_statement.dart';
 import '../domain/statement.dart';
 
-const _oldRowsNotice = 'Estas filas son anteriores a tu saldo inicial: se registran en tu historial pero no cambian el saldo.';
+const _beforeInitialNotice = 'Estas filas son anteriores a tu saldo inicial: se registran en tu historial pero no cambian el saldo.';
+const _beforeAdjustmentNotice =
+    'Estas filas son anteriores a tu último ajuste de saldo: se registran en tu historial pero no cambian el saldo.';
 
 String _plural(int n, String one, String many) => n == 1 ? '$n $one' : '$n $many';
 
@@ -64,7 +66,7 @@ class _ImportStatementScreenState extends ConsumerState<ImportStatementScreen> {
   bool _aiOn = false;
   ParsedStatement? _aiParsed;
 
-  ({int created, int linked, int? closing, int balance, String currency})? _done;
+  ({int created, int linked, int? closing, int balance, String currency, DateTime? at})? _done;
   bool _adjusted = false;
 
   WalletAccount? _account(List<WalletAccount> active) => resolveAccount(active, _accountId);
@@ -224,7 +226,11 @@ class _ImportStatementScreenState extends ConsumerState<ImportStatementScreen> {
     });
     final messenger = ScaffoldMessenger.maybeOf(context);
     try {
-      final parsed = await reader.read(loaded.text, now: ref.read(nowProvider));
+      final parsed = await reader.read(
+        loaded.text,
+        now: ref.read(nowProvider),
+        names: [loaded.meta.holder, ref.read(currentAccountProvider)?.displayName],
+      );
       if (!mounted) return;
       _aiParsed = parsed;
       _overrides.clear();
@@ -299,18 +305,24 @@ class _ImportStatementScreenState extends ConsumerState<ImportStatementScreen> {
       await ref.read(walletActionsProvider).saveAll(upsert);
       HapticFeedback.mediumImpact();
       final merged = {for (final m in movements) m.id: m, for (final m in upsert) m.id: m}.values.toList();
-      final linked = [
-        for (var i = 0; i < preview.length; i++)
-          if (!_selected.contains(i) && preview[i].link != null) i,
+      final linked = preview.where((p) => p.link != null).length;
+      final created = [
+        for (final i in _selected)
+          if (i < preview.length && preview[i].link == null) i,
       ].length;
+      // El saldo final del archivo es el del cierre: se compara con el saldo a esa
+      // hora, sin lo registrado después (que seguirá contando).
+      final at = _statementEnd();
+      final asOf = at == null ? merged : merged.where((m) => !m.date.isAfter(at)).toList();
       if (!mounted) return;
       setState(() {
         _done = (
-          created: _selected.length,
+          created: created,
           linked: linked,
           closing: _parsed?.closingBalanceMinor,
-          balance: computeBalances(accounts, merged)[account.id] ?? 0,
+          balance: computeBalances(accounts, asOf)[account.id] ?? 0,
           currency: account.currency,
+          at: at,
         );
       });
     } catch (_) {
@@ -322,11 +334,23 @@ class _ImportStatementScreenState extends ConsumerState<ImportStatementScreen> {
     }
   }
 
+  /// Último instante del estado de cuenta: el fin del día "Hasta" o, sin él, el de
+  /// la última fila. Null si no hay filas ni periodo.
+  DateTime? _statementEnd() {
+    DateTime? day = _loaded?.meta.to;
+    for (final r in _parsed?.rows ?? const <StatementRow>[]) {
+      if (_loaded?.meta.to == null && (day == null || r.date.isAfter(day))) day = r.date;
+    }
+    if (day == null) return null;
+    return DateTime(day.year, day.month, day.day + 1).subtract(const Duration(seconds: 1));
+  }
+
   Future<void> _adjust(WalletAccount account) async {
     final done = _done;
     final closing = done?.closing;
     if (done == null || closing == null) return;
-    final adjustment = makeAdjustment(account: account, currentMinor: done.balance, realMinor: closing, now: DateTime.now());
+    // Fechado al cierre del estado de cuenta: lo posterior sigue moviendo el saldo.
+    final adjustment = makeAdjustment(account: account, currentMinor: done.balance, realMinor: closing, now: DateTime.now(), date: done.at);
     if (adjustment != null) await ref.read(walletActionsProvider).save(adjustment);
     HapticFeedback.mediumImpact();
     if (mounted) setState(() => _adjusted = true);
@@ -443,7 +467,7 @@ class _ImportStatementScreenState extends ConsumerState<ImportStatementScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('Usar IA para leer este archivo', style: AppType.body),
-                        Text('El texto se envía a Gemini con los números largos ocultos.', style: AppType.footnote),
+                        Text('El texto se envía a Gemini con tu nombre y los números largos ocultos.', style: AppType.footnote),
                       ],
                     ),
                   ),
@@ -459,7 +483,12 @@ class _ImportStatementScreenState extends ConsumerState<ImportStatementScreen> {
 
   Widget _previewBody(WalletAccount account, List<WalletAccount> active, List<PreviewRow> preview) {
     final fresh = preview.where((p) => p.status == RowStatus.fresh).length;
-    final oldSelected = _selected.any((i) => i < preview.length && !preview[i].movesBalance);
+    final old = [
+      for (final i in _selected)
+        if (i < preview.length && !preview[i].movesBalance) preview[i],
+    ];
+    final beforeInitial = old.any((p) => p.beforeInitial);
+    final beforeAdjustment = old.any((p) => !p.beforeInitial);
     final mismatch = _currencyMismatch(account);
     final header = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -491,10 +520,16 @@ class _ImportStatementScreenState extends ConsumerState<ImportStatementScreen> {
               style: AppType.subhead,
             ),
           ),
-        if (oldSelected)
+        // Cada causa con su texto: la fecha del saldo inicial o un ajuste posterior.
+        if (beforeInitial)
           const Padding(
             padding: EdgeInsets.only(bottom: 12),
-            child: _Notice(_oldRowsNotice),
+            child: _Notice(_beforeInitialNotice),
+          ),
+        if (beforeAdjustment)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: _Notice(_beforeAdjustmentNotice),
           ),
         ..._aiSection(rowsFound: preview.isNotEmpty),
       ],
@@ -617,7 +652,8 @@ class _RowTile extends StatelessWidget {
           Checkbox(
             key: ValueKey('row_$index'),
             value: selected,
-            onChanged: (v) => onSelected(v ?? false),
+            // Enlazada: el otro lado ya es esta operación; no se puede crear otra.
+            onChanged: preview.link != null ? null : (v) => onSelected(v ?? false),
           ),
           Expanded(
             child: Padding(

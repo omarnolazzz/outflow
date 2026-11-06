@@ -14,9 +14,9 @@ class StatementAiFailed implements Exception {
 }
 
 /// Lee un estado de cuenta con IA. Solo se usa tras activar el interruptor **Usar IA
-/// para leer este archivo**, y solo recibe texto pasado por [maskSensitive].
+/// para leer este archivo**, y solo recibe texto pasado por [maskNames] y [maskSensitive].
 abstract interface class StatementAiReader {
-  Future<ParsedStatement> read(String text, {required DateTime now});
+  Future<ParsedStatement> read(String text, {required DateTime now, List<String?> names = const []});
 }
 
 /// Mismo cliente que `GeminiReceiptReader`. El texto del estado de cuenta nunca se
@@ -49,7 +49,7 @@ class GeminiStatementReader implements StatementAiReader {
   };
 
   @override
-  Future<ParsedStatement> read(String text, {required DateTime now}) async {
+  Future<ParsedStatement> read(String text, {required DateTime now, List<String?> names = const []}) async {
     try {
       final uri = Uri.https('generativelanguage.googleapis.com', '/v1beta/models/$model:generateContent', {'key': apiKey});
       final body = jsonEncode({
@@ -59,7 +59,7 @@ class GeminiStatementReader implements StatementAiReader {
               {
                 'text': 'Extrae todos los movimientos de este estado de cuenta, uno por fila, también los que se '
                     'repiten. Las fechas están en formato día/mes/año. No incluyas totales ni saldos como '
-                    'movimientos. Responde solo con el JSON.\n\n${maskSensitive(text)}',
+                    'movimientos. Responde solo con el JSON.\n\n${maskSensitive(maskNames(text, names))}',
               },
             ],
           },

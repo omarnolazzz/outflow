@@ -17,11 +17,20 @@ final _fee = RegExp(r'impuesto a (?:los|las) (?:creditos|transacciones)|(?<![\p{
 final _prefixed = RegExp(r'^(.+?)\s*-\s*(.+)$');
 final _transferText = RegExp(r'^(?:yape|plin)\b|\b(?:transf|trf|cce)\b');
 
-/// El nombre va por prefijo porque el banco lo corta a unas 30 letras.
+/// El nombre va por prefijo porque el banco lo corta a unas 30 letras. Un nombre
+/// de pila suelto no basta ("Yape-Juan" puede ser cualquier Juan): hacen falta dos
+/// palabras en orden (la última puede estar cortada) o al menos 15 letras, o todo
+/// el titular si es más corto.
 bool _matchesHolder(String rest, String? holder) {
   if (holder == null) return false;
   final name = normalizeMerchant(holder);
-  return rest.length >= 3 && name.startsWith(rest);
+  if (rest.isEmpty || !name.startsWith(rest)) return false;
+  // El prefijo debe acabar en una palabra entera del titular o en su corte final.
+  final words = rest.split(' ');
+  final full = name.split(' ');
+  final wholeWords = words.length >= 2 && words.length <= full.length;
+  final long = rest.length >= (name.length < 15 ? name.length : 15);
+  return wholeWords || long;
 }
 
 /// La cuenta propia nombrada como `<cuenta>-<titular>`: el banco escribe así las
@@ -180,6 +189,7 @@ class PreviewRow {
     required this.kind,
     required this.status,
     required this.movesBalance,
+    this.beforeInitial = false,
     this.other,
     this.link,
   });
@@ -196,6 +206,10 @@ class PreviewRow {
 
   /// Importarla cambia el saldo de la cuenta; si no, solo entra en el historial.
   final bool movesBalance;
+
+  /// Anterior a la fecha del saldo inicial (si no mueve el saldo y no lo es, es
+  /// por un ajuste posterior).
+  final bool beforeInitial;
 }
 
 /// Clasifica las filas para mostrarlas, sin efectos. Con [holder] (del archivo) y
@@ -248,6 +262,7 @@ List<PreviewRow> buildPreview({
       status: status,
       other: other,
       link: link,
+      beforeInitial: row.date.isBefore(account.initialDate),
       movesBalance: movesBalance(
         _movementOf(row, kind: kind, other: other, account: account, categoryId: kNoCategoryId, now: now),
         account,
@@ -330,10 +345,12 @@ List<Movement> buildImport({
   final out = <Movement>[];
   for (var i = 0; i < preview.length; i++) {
     final p = preview[i];
-    if (selected.contains(i)) {
-      out.add(_movementOf(p.row, kind: p.kind, other: p.other, account: account, categoryId: _categoryFor(p, categories, history), now: now));
-    } else if (p.link != null) {
+    // Una fila enlazada está bloqueada: el otro lado ya es esta operación, y crear
+    // otra la contaría dos veces.
+    if (p.link != null) {
       out.add(p.link!);
+    } else if (selected.contains(i)) {
+      out.add(_movementOf(p.row, kind: p.kind, other: p.other, account: account, categoryId: _categoryFor(p, categories, history), now: now));
     }
   }
   return out;

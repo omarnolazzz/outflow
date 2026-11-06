@@ -159,6 +159,19 @@ void main() {
       expect(kind('Dale-Lucia Prueba', false, holder: 'Otro Nombre', google: _holder), RowKind.transfer);
     });
 
+
+    test('el titular debe coincidir en dos palabras o en bastantes letras', () {
+      final yape = [_scotia, _acc('yape', 'Yape')];
+      RowKind k(String d, String holder) => classifyDescription(d, false, holder: holder, accounts: yape);
+      expect(k('Yape-Juan', 'Juan Pérez Prueba'), RowKind.expense);
+      expect(k('Yape-Juan Pe', 'Juan Pérez Prueba'), RowKind.transfer, reason: 'dos palabras, la última cortada');
+      expect(k('Yape-Juan Lopez', 'Juan Pérez Prueba'), RowKind.expense);
+      expect(k('Yape-Luciaprueba', 'Luciaprueba Ejemplo'), RowKind.expense, reason: 'una palabra corta no basta');
+      expect(k('Yape-Luciapruebaejemplo', 'Luciapruebaejemplo Otro'), RowKind.transfer, reason: '15 letras o más');
+      expect(k('Yape-Ana', 'Ana'), RowKind.transfer, reason: 'todo el titular, aunque sea corto');
+      // El banco corta a unas 30 letras.
+      expect(k('Yape-${'Lucía Prueba Ejemplo Segundo Apellido'.substring(0, 30)}', 'Lucía Prueba Ejemplo Segundo Apellido'), RowKind.transfer);
+    });
     test('Dale con otro nombre, o sin titular conocido, no es una cuenta propia', () {
       expect(kind('Dale-Mario Otra Persona', false), RowKind.expense);
       expect(kind('Dale-Lucia Prueba', false, holder: null), RowKind.expense);
@@ -349,6 +362,13 @@ void main() {
       final inbound = importAll([_row(3, 400, credit: true, text: 'Transf.inmed.cce ctas.propias')]).single;
       expect((inbound.toAccountId, inbound.transferIncoming), (null, true));
       expect(computeBalances(accounts, [inbound])['scotia'], 100400);
+    });
+
+    test('una fila enlazada queda bloqueada: marcarla no crea otra transferencia', () {
+      final other = _m('o', 400, kind: MovementKind.transfer, account: 'dale', incoming: true, origin: MovementOrigin.statement);
+      final preview = buildPreview(rows: [_row(3, 400, text: 'Dale-Lucia Prueba Ejem')], account: _scotia, accounts: accounts, movements: [other], holder: _holder, now: _now);
+      final made = buildImport(preview: preview, selected: {0}, account: _scotia, accounts: accounts, categories: categories, history: [other], now: _now);
+      expect(made.map((m) => m.id), ['o']);
     });
 
     test('si la otra cuenta ya tiene el lado opuesto sin destino, se enlaza y no se duplica', () {
@@ -568,6 +588,17 @@ void main() {
       expect(movements.saved.single.toAccountId, 'dale');
     });
 
+    testWidgets('las filas anteriores a un ajuste lo dicen así', (tester) async {
+      final adjustment = makeAdjustment(account: _scotia, currentMinor: 100000, realMinor: 120000, now: DateTime(2026, 10, 20))!;
+      await pump(tester, files: [_Picked.csv('${_csvHeader}3/10/2026,Compra,-500.00\n')], existing: [adjustment]);
+      await chooseFile(tester);
+      expect(
+        find.text('Estas filas son anteriores a tu último ajuste de saldo: se registran en tu historial pero no cambian el saldo.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('saldo inicial'), findsNothing);
+    });
+
     testWidgets('avisa de las filas anteriores al saldo y no lo mueve', (tester) async {
       final account = _acc('scotia', 'Scotiabank', isDefault: true, since: DateTime(2026, 11, 1));
       await pump(tester, files: [_Picked.csv('${_csvHeader}3/10/2026,Compra,-500.00\n')], accountList: [account]);
@@ -603,6 +634,41 @@ void main() {
       expect(computeBalances([_scotia, _dale], movements.saved)['scotia'], 25000);
       expect(movements.saved.where((m) => m.kind == MovementKind.adjustment), hasLength(1));
       expect(find.text(label), findsNothing);
+    });
+
+    testWidgets('una fila enlazada no se puede marcar', (tester) async {
+      final other = _m('o', 400, kind: MovementKind.transfer, account: 'dale', incoming: true, origin: MovementOrigin.statement);
+      await pump(tester, files: [_Picked.csv('${_csvHeader}3/10/2026,Dale-Lucia Prueba Ejem,-4.00\n')], existing: [other]);
+      await chooseFile(tester);
+      expect(tester.widget<Checkbox>(find.byKey(const ValueKey('row_0'))).onChanged, isNull);
+      expect(find.text('Enlazar 1 transferencia'), findsOneWidget);
+    });
+
+    testWidgets('el ajuste compara con el saldo al cierre del estado de cuenta, no con el de hoy', (tester) async {
+      // Capturado después del cierre: no cuenta para comparar, pero sigue contando.
+      final later = _m('later', 3000, day: 20);
+      const csv = 'Fecha,Concepto,Importe,Saldo\n3/10/2026,Compra,-5.00,995.00\n';
+      await pump(tester, files: [_Picked.csv(csv)], existing: [later]);
+      await chooseFile(tester);
+      await tester.tap(find.text('Importar 1 movimiento'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Ajustar a'), findsNothing);
+    });
+
+    testWidgets('al ajustar, el saldo al cierre coincide y lo posterior sigue contando', (tester) async {
+      final later = _m('later', 3000, day: 20);
+      const csv = 'Fecha,Concepto,Importe,Saldo\n3/10/2026,Compra,-5.00,250.00\n';
+      await pump(tester, files: [_Picked.csv(csv)], existing: [later]);
+      await chooseFile(tester);
+      await tester.tap(find.text('Importar 1 movimiento'));
+      await tester.pumpAndSettle();
+      final label = 'Ajustar a ${Fmt.money(const Money(25000, 'PEN'))}';
+      await tester.tap(find.text(label));
+      await tester.pumpAndSettle();
+      final adjustment = movements.saved.singleWhere((m) => m.kind == MovementKind.adjustment);
+      expect(adjustment.date.isAfter(DateTime(2026, 10, 3)), isTrue);
+      expect(adjustment.date.isBefore(DateTime(2026, 10, 4)), isTrue);
+      expect(computeBalances([_scotia, _dale], movements.saved)['scotia'], 25000 - 3000);
     });
 
     testWidgets('con saldo final igual no ofrece ajuste', (tester) async {
@@ -738,6 +804,24 @@ void main() {
         expect(sent, hasLength(1));
         expect(sent.single.body, isNot(contains('19112345678901')));
         expect(find.text('Compra IA'), findsOneWidget);
+      });
+
+      testWidgets('el nombre del titular no se envía', (tester) async {
+        final sent = <http.Request>[];
+        await pump(
+          tester,
+          files: [_Picked('estado.pdf', Uint8List(0))],
+          pdf: _Pdf('Titular: $_holder\nDALE-LUCIA PRUEBA EJEM\n$unreadable'),
+          ai: reader(sent),
+        );
+        await chooseFile(tester);
+        await tester.tap(find.byKey(const ValueKey('useAi')));
+        await tester.pumpAndSettle();
+        final body = sent.single.body.toLowerCase();
+        for (final part in ['lucía', 'lucia', 'prueba', 'ejem']) {
+          expect(body, isNot(contains(part)), reason: part);
+        }
+        expect(find.textContaining('tu nombre'), findsOneWidget);
       });
 
       testWidgets('sin clave no aparece', (tester) async {
