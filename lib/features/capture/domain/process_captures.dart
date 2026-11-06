@@ -111,13 +111,21 @@ WalletAccount? _byExactName(List<WalletAccount> active, String party) {
   return found.length == 1 ? found.first : null;
 }
 
-/// Cómo afecta un movimiento a una cuenta, para comparar con un evento.
+/// Cómo afecta un movimiento a una cuenta, para comparar con un evento. Un ajuste
+/// de saldo no es una operación del banco, salvo el saldado de una deuda con un
+/// amigo: es dinero que entró (o salió) de verdad, y su aviso es el mismo pago.
 ({CaptureDirection direction, int minor, String? currency})? accountSide(Movement m, String accountId, String defaultAccountId) {
   if (m.origin == MovementOrigin.subscription) return null;
   final mine = (m.accountId ?? defaultAccountId) == accountId;
   switch (m.kind) {
     case MovementKind.adjustment:
-      return null;
+      final signed = m.adjustmentMinor ?? 0;
+      if (!mine || m.origin != MovementOrigin.settlement || signed == 0) return null;
+      return (
+        direction: signed > 0 ? CaptureDirection.inbound : CaptureDirection.out,
+        minor: signed.abs(),
+        currency: m.amount.currency,
+      );
     case MovementKind.expense:
       return mine ? (direction: CaptureDirection.out, minor: m.paidMinor ?? m.amount.minor, currency: m.amount.currency) : null;
     case MovementKind.income:
@@ -175,7 +183,8 @@ bool isDuplicate(
   } else if (m.date.difference(date).abs() > window) {
     return false;
   }
-  if (merchant != null && !_compatibleMerchants(m.title, merchant)) return false;
+  // El título de un saldado es el del gasto compartido, no quien pagó: no se compara.
+  if (merchant != null && m.origin != MovementOrigin.settlement && !_compatibleMerchants(m.title, merchant)) return false;
   if (ref != null && m.externalRef != null && m.externalRef!.toLowerCase() != ref.toLowerCase()) return false;
   return true;
 }

@@ -11,6 +11,7 @@ import 'package:outflow/features/account/domain/account.dart';
 import 'package:outflow/features/account/presentation/session_controller.dart';
 import 'package:outflow/features/capture/data/capture_inbox.dart';
 import 'package:outflow/features/capture/data/capture_sources_repository.dart';
+import 'package:outflow/features/capture/domain/parse_bank_text.dart';
 import 'package:outflow/features/capture/domain/process_captures.dart';
 import 'package:outflow/features/capture/presentation/capture_providers.dart';
 import 'package:outflow/features/wallet/data/hive_movement_repository.dart';
@@ -401,6 +402,52 @@ void main() {
       final t = makeTransfer(from: scotia, to: dale, amountMinor: 400, date: t0, now: t0);
       final o = run([ev('Recibiste S/ 4.00. Referencia: AB12 en tu cuenta ****5678')], movements: [t]);
       expect(o.upsert.single.id, t.id);
+    });
+  });
+
+  group('saldados', () {
+    // Ana te pagó su parte de "Cena" a Scotiabank: entra +25 en la cuenta.
+    final settled = Movement(
+      id: 'settle:e1:ana',
+      kind: MovementKind.adjustment,
+      amount: const Money(2500, 'PEN'),
+      categoryId: kNoCategoryId,
+      date: t0.subtract(const Duration(minutes: 5)),
+      createdAt: t0.subtract(const Duration(minutes: 5)),
+      title: 'Cena',
+      note: 'Ana te pagó',
+      origin: MovementOrigin.settlement,
+      accountId: 'scotia',
+      adjustmentMinor: 2500,
+    );
+
+    test('accountSide lee un saldado como entrada o salida de su cuenta', () {
+      final side = accountSide(settled, 'scotia', 'scotia')!;
+      expect(side.direction, CaptureDirection.inbound);
+      expect(side.minor, 2500);
+      final paid = Movement.fromJson({...settled.toJson(), 'adjustmentMinor': -2500});
+      expect(accountSide(paid, 'scotia', 'scotia')!.direction, CaptureDirection.out);
+      expect(accountSide(settled, 'dale', 'scotia'), isNull);
+    });
+
+    test('"Recibiste S/ 25" tras saldar no es un segundo +25 silencioso', () {
+      final o = run([ev('Recibiste S/ 25.00 de Ana Pérez')], movements: [settled]);
+      final m = o.upsert.single;
+      // Sin referencia no se funde: queda como duda.
+      expect(m.id, isNot(settled.id));
+      expect(m.note, kDuplicateNote);
+    });
+
+    test('con referencia, el aviso se funde con el saldado', () {
+      final o = run([ev('Recibiste S/ 25.00 de Ana Pérez. Nro. de operación: 778899')], movements: [settled]);
+      final m = o.upsert.single;
+      expect(m.id, settled.id);
+      expect(m.pairedCaptureId, isNotNull);
+    });
+
+    test('un ajuste de saldo hecho por el usuario sigue sin contar', () {
+      final manualAdj = Movement.fromJson({...settled.toJson(), 'id': 'adj', 'origin': 'manual'});
+      expect(accountSide(manualAdj, 'scotia', 'scotia'), isNull);
     });
   });
 

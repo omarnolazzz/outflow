@@ -28,6 +28,15 @@ import '../domain/parse_statement.dart';
 import '../domain/statement.dart';
 
 const _beforeInitialNotice = 'Estas filas son anteriores a tu saldo inicial: se registran en tu historial pero no cambian el saldo.';
+
+/// Aviso de las filas nuevas anteriores al saldo inicial, que empiezan sin marcar.
+const kBeforeInitialUncheckedNotice =
+    'Las filas anteriores a tu saldo inicial empiezan sin marcar: quizá ya las apuntaste en otra cuenta. '
+    'Si las marcas, se registran en tu historial pero no cambian el saldo.';
+
+/// Una fila nueva empieza marcada, salvo si es anterior al saldo inicial: lo de
+/// entonces puede estar ya apuntado en otra cuenta, y contarlo dos veces no se nota.
+bool _startsSelected(PreviewRow p) => p.status == RowStatus.fresh && !p.beforeInitial;
 const _beforeAdjustmentNotice =
     'Estas filas son anteriores a tu último ajuste de saldo: se registran en tu historial pero no cambian el saldo.';
 
@@ -187,13 +196,13 @@ class _ImportStatementScreenState extends ConsumerState<ImportStatementScreen> {
           ..clear()
           ..addAll([
             for (var i = 0; i < preview.length; i++)
-              if (preview[i].status == RowStatus.fresh) i,
+              if (_startsSelected(preview[i])) i,
           ]);
       } else {
         // Cambiar el tipo puede enlazar la fila o dejar de hacerlo.
         for (var i = 0; i < preview.length; i++) {
           if (preview[i].status == previous[i].status) continue;
-          preview[i].status == RowStatus.fresh ? _selected.add(i) : _selected.remove(i);
+          _startsSelected(preview[i]) ? _selected.add(i) : _selected.remove(i);
         }
       }
     });
@@ -488,6 +497,10 @@ class _ImportStatementScreenState extends ConsumerState<ImportStatementScreen> {
         if (i < preview.length && !preview[i].movesBalance) preview[i],
     ];
     final beforeInitial = old.any((p) => p.beforeInitial);
+    final uncheckedEarly = [
+      for (var i = 0; i < preview.length; i++)
+        if (preview[i].status == RowStatus.fresh && preview[i].beforeInitial && !_selected.contains(i)) i,
+    ].isNotEmpty;
     final beforeAdjustment = old.any((p) => !p.beforeInitial);
     final mismatch = _currencyMismatch(account);
     final header = Column(
@@ -521,7 +534,12 @@ class _ImportStatementScreenState extends ConsumerState<ImportStatementScreen> {
             ),
           ),
         // Cada causa con su texto: la fecha del saldo inicial o un ajuste posterior.
-        if (beforeInitial)
+        if (uncheckedEarly)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: _Notice(kBeforeInitialUncheckedNotice),
+          )
+        else if (beforeInitial)
           const Padding(
             padding: EdgeInsets.only(bottom: 12),
             child: _Notice(_beforeInitialNotice),

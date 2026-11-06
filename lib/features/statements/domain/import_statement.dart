@@ -62,11 +62,24 @@ CaptureDirection _direction(StatementRow row) => row.isCredit ? CaptureDirection
 /// así que las filas iguales se cuentan por multiplicidad. Primero la misma
 /// referencia, luego el mismo día y por último ±1 día (un aviso se fecha al
 /// recibirlo y el estado de cuenta, al contabilizarlo).
-Map<int, Movement> _matchSameAccount(List<StatementRow> rows, WalletAccount account, List<Movement> movements, String defaultId) {
-  final free = movements.where((m) => accountSide(m, account.id, defaultId) != null).toList()
+///
+/// Con [only] se miran solo esas filas; [accountId] es la cuenta cuyos movimientos
+/// se cruzan y [currency], la del archivo.
+Map<int, Movement> _matchSameAccount(
+  List<StatementRow> rows,
+  String accountId,
+  String currency,
+  Iterable<Movement> movements,
+  String defaultId, {
+  Set<int>? only,
+}) {
+  final free = movements.where((m) => accountSide(m, accountId, defaultId) != null).toList()
     ..sort((a, b) => a.date.compareTo(b.date));
   final matched = <int, Movement>{};
-  final order = [for (var i = 0; i < rows.length; i++) i]..sort((a, b) => rows[a].date.compareTo(rows[b].date));
+  final order = [
+    for (var i = 0; i < rows.length; i++)
+      if (only == null || only.contains(i)) i,
+  ]..sort((a, b) => rows[a].date.compareTo(rows[b].date));
 
   for (final i in order) {
     final ref = rows[i].operationId?.toLowerCase();
@@ -84,11 +97,11 @@ Map<int, Movement> _matchSameAccount(List<StatementRow> rows, WalletAccount acco
       final row = rows[i];
       final found = free.where((m) => isDuplicate(
             m,
-            accountId: account.id,
+            accountId: accountId,
             defaultAccountId: defaultId,
             direction: _direction(row),
             amountMinor: row.amountMinor,
-            currency: account.currency,
+            currency: currency,
             date: row.date,
             calendarDays: days,
             ref: row.operationId,
@@ -227,7 +240,28 @@ List<PreviewRow> buildPreview({
 }) {
   final defaultId = defaultAccountId ?? defaultAccountOf(accounts)?.id ?? account.id;
   final active = accounts.where((a) => !a.archived).toList();
-  final sameAccount = _matchSameAccount(rows, account, movements, defaultId);
+  final sameAccount = _matchSameAccount(rows, account.id, account.currency, movements, defaultId);
+  // Antes de que existiera esta cuenta, lo que pasó en ella se apuntaba en la por
+  // defecto (o sin cuenta): esas filas se cruzan también con esos movimientos, con
+  // las mismas reglas. Una transferencia ya dice sus cuentas: no se reinterpreta.
+  if (account.id != defaultId) {
+    final taken = {for (final m in sameAccount.values) m.id};
+    final early = {
+      for (var i = 0; i < rows.length; i++)
+        if (!sameAccount.containsKey(i) && rows[i].date.isBefore(account.initialDate)) i,
+    };
+    if (early.isNotEmpty) {
+      sameAccount.addAll(_matchSameAccount(
+        rows,
+        defaultId,
+        account.currency,
+        movements.where((m) =>
+            !taken.contains(m.id) && m.kind != MovementKind.transfer && (m.accountId ?? defaultId) == defaultId),
+        defaultId,
+        only: early,
+      ));
+    }
+  }
   final usedLinks = <String>{for (final m in sameAccount.values) m.id};
 
   final out = <PreviewRow>[];

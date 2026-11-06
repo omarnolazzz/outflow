@@ -278,6 +278,28 @@ void main() {
       expect(_statuses(classifyRows([_row(3, 500)], _scotia, [sub, adj])), [RowStatus.fresh]);
     });
 
+    test('un saldado con un amigo absorbe la fila del pago (Plin +25 el mismo día)', () {
+      final settled = Movement(
+        id: 'settle:e1:ana',
+        kind: MovementKind.adjustment,
+        amount: const Money(2500, 'PEN'),
+        categoryId: kNoCategoryId,
+        date: DateTime(2026, 10, 3, 20),
+        createdAt: DateTime(2026, 10, 3, 20),
+        title: 'Cena',
+        note: 'Ana te pagó',
+        origin: MovementOrigin.settlement,
+        accountId: 'scotia',
+        adjustmentMinor: 2500,
+      );
+      final rows = [_row(3, 2500, credit: true, text: 'Plin-Ana Perez'), _row(3, 2500, credit: true, text: 'Plin-Ana Perez')];
+      // Absorbe una sola fila: la segunda es otro pago.
+      expect(_statuses(classifyRows(rows, _scotia, [settled])), [RowStatus.alreadyThere, RowStatus.fresh]);
+      // Un saldado tuyo (sale dinero) no absorbe una entrada.
+      final paid = Movement.fromJson({...settled.toJson(), 'adjustmentMinor': -2500});
+      expect(_statuses(classifyRows([rows.first], _scotia, [paid])), [RowStatus.fresh]);
+    });
+
     test('la transferencia que entra por el otro lado cuenta como de esta cuenta', () {
       final transfer = _m('t', 400, kind: MovementKind.transfer, account: 'scotia', to: 'dale', origin: MovementOrigin.statement);
       expect(_statuses(classifyRows([_row(3, 400, credit: true, text: 'Scotiabank-Lucia')], _dale, [transfer])), [RowStatus.alreadyThere]);
@@ -454,6 +476,41 @@ void main() {
       expect(summary.income.minor, 900);
     });
 
+    test('cuenta nueva: lo de antes de su saldo inicial apuntado en la por defecto ya está', () {
+      final mine = _acc('mi', 'Mi cuenta', isDefault: true);
+      final scotia = _acc('scotia', 'Scotiabank', since: _now);
+      final existing = [
+        _m('a', 500, account: 'mi', origin: MovementOrigin.manual),
+        _m('b', 2000, kind: MovementKind.income, account: null, day: 5, origin: MovementOrigin.manual),
+        // En otra cuenta que no es la por defecto: no cuenta.
+        _m('c', 1250, account: 'dale', day: 4, origin: MovementOrigin.manual),
+        // Una transferencia ya dice sus cuentas.
+        _m('t', 700, kind: MovementKind.transfer, account: 'mi', to: 'dale', day: 6, origin: MovementOrigin.manual),
+        // Después del saldo inicial, una fila de Scotiabank no es de la por defecto.
+        _m('d', 300, account: 'mi', day: 4, month: 11, origin: MovementOrigin.manual),
+      ];
+      final rows = [
+        _row(3, 500),
+        _row(3, 500),
+        _row(4, 1250),
+        _row(5, 2000, credit: true, text: 'Yape-Mario Otra Persona'),
+        _row(6, 700),
+        _row(4, 300, month: 11),
+      ];
+      final preview = buildPreview(rows: rows, account: scotia, accounts: [mine, scotia, _dale], movements: existing, now: _now);
+      expect(preview.map((p) => p.status), [
+        RowStatus.alreadyThere,
+        RowStatus.fresh, // cada movimiento absorbe una sola fila
+        RowStatus.fresh,
+        RowStatus.alreadyThere,
+        RowStatus.fresh,
+        RowStatus.fresh,
+      ]);
+      // Para la cuenta por defecto no cambia nada: ya cruza sus movimientos.
+      final own = buildPreview(rows: [_row(4, 1250)], account: mine, accounts: [mine, _dale], movements: existing, now: _now);
+      expect(own.single.status, RowStatus.fresh);
+    });
+
     test('anteriores a un ajuste y apuntadas después: tampoco mueven el saldo', () {
       final open = _acc('scotia', 'Scotiabank', isDefault: true);
       final adjustment = makeAdjustment(account: open, currentMinor: 100000, realMinor: 120000, now: DateTime(2026, 10, 20))!;
@@ -603,6 +660,11 @@ void main() {
       final account = _acc('scotia', 'Scotiabank', isDefault: true, since: DateTime(2026, 11, 1));
       await pump(tester, files: [_Picked.csv('${_csvHeader}3/10/2026,Compra,-500.00\n')], accountList: [account]);
       await chooseFile(tester);
+      // Empieza sin marcar, y el aviso dice por qué.
+      expect(find.text(kBeforeInitialUncheckedNotice), findsOneWidget);
+      expect(find.text('Importar 0 movimientos'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('row_0')));
+      await tester.pump();
       expect(
         find.text('Estas filas son anteriores a tu saldo inicial: se registran en tu historial pero no cambian el saldo.'),
         findsOneWidget,
@@ -611,6 +673,40 @@ void main() {
       await tester.pumpAndSettle();
       expect(movements.saved, hasLength(1));
       expect(computeBalances([account], movements.saved)['scotia'], 100000);
+    });
+
+    testWidgets('estado de octubre en una cuenta creada hoy: lo apuntado en Mi cuenta ya está y el resto empieza sin marcar',
+        (tester) async {
+      final mine = _acc('mi', 'Mi cuenta', isDefault: true);
+      final scotia = _acc('scotia', 'Scotiabank', since: DateTime(2026, 11, 3), digits: '1234');
+      final file = _Picked.csv(
+        '${_csvHeader}3/10/2026,Transf. plin,-500.00\n'
+        '3/10/2026,Transf. plin,-500.00\n'
+        '4/10/2026,Punto marisko,-12.50\n'
+        '5/10/2026,Yape-Mario Otra Persona,20.00\n',
+      );
+      await pump(tester,
+          files: [file],
+          size: const Size(1080, 3600),
+          accountList: [mine, scotia],
+          existing: [
+            _m('a', 50000, account: 'mi', origin: MovementOrigin.manual),
+            _m('b', 2000, kind: MovementKind.income, account: null, day: 5, origin: MovementOrigin.manual),
+          ]);
+      await chooseFile(tester);
+      expect(find.text('Ya registrada'), findsNWidgets(2));
+      expect(find.text('Nueva'), findsNWidgets(2));
+      expect(find.text(kBeforeInitialUncheckedNotice), findsOneWidget);
+      expect(find.text('Importar 0 movimientos'), findsOneWidget);
+      // Marcar una sí la importa, sin mover el saldo.
+      await tester.tap(find.byKey(const ValueKey('row_2')));
+      await tester.pump();
+      await tester.tap(find.text('Importar 1 movimiento'));
+      await tester.pumpAndSettle();
+      final made = movements.saved.where((m) => m.origin == MovementOrigin.statement).single;
+      expect(made.title, 'Punto marisko');
+      expect(made.accountId, 'scotia');
+      expect(computeBalances([mine, scotia], movements.saved)['scotia'], 100000);
     });
 
     testWidgets('sin saldo final no se ofrece ajuste', (tester) async {
