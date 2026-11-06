@@ -326,14 +326,19 @@ class _SplitEditorScreenState extends ConsumerState<SplitEditorScreen> {
     // Antes de guardar el gasto, para que su movimiento nazca ya con la cuenta.
     if (_paidBy == me.uid) {
       final selectable = selectableAccounts(ref.read(activeAccountsProvider), currency: _currency());
-      final wanted = _accountId ?? _storedAccount();
-      final accountId = selectable.any((a) => a.id == wanted) ? wanted : resolveAccount(selectable, null)?.id;
       final stored = _storedAccount();
-      if (accountId != null && accountId != stored) {
-        final id = editing?.id ?? newId;
+      final id = editing?.id ?? newId;
+      final split = movements.where((m) => m.id == splitMovementId(id)).firstOrNull;
+      // Al editar solo se toca la cuenta si el usuario la cambió en el selector.
+      final String? accountId;
+      if (editing == null) {
+        accountId = selectable.any((a) => a.id == _accountId) ? _accountId : resolveAccount(selectable, null)?.id;
+      } else {
+        accountId = _accountId;
+      }
+      if (accountId != null && accountId != (stored ?? split?.accountId)) {
         await ref.read(walletActionsProvider).setSplitAccount(id, accountId);
         // Cambiar la cuenta de un reparto ya guardado mueve también su movimiento.
-        final split = movements.where((m) => m.id == splitMovementId(id)).firstOrNull;
         if (editing != null && split != null && split.accountId != accountId) {
           await ref.read(walletActionsProvider).save(split.copyWith(accountId: accountId));
         }
@@ -565,7 +570,9 @@ class _SplitEditorScreenState extends ConsumerState<SplitEditorScreen> {
               e(Padding(
                 padding: const EdgeInsets.only(top: 18),
                 child: AccountPicker(
-                  selectedId: _accountId ?? ref.watch(walletSettingsProvider).value?.splitAccountIds[widget.editing?.id],
+                  selectedId: _accountId ??
+                      ref.watch(walletSettingsProvider).value?.splitAccountIds[widget.editing?.id] ??
+                      movements.where((m) => m.id == splitMovementId(widget.editing?.id ?? '')).firstOrNull?.accountId,
                   label: '¿De qué cuenta salió?',
                   currency: currency,
                   onChanged: (a) => setState(() => _accountId = a.id),

@@ -364,6 +364,45 @@ void main() {
       expect(settings.value.splitAccountIds, isEmpty);
     });
 
+    testWidgets('editar solo el título conserva la cuenta del movimiento sin entrada guardada', (tester) async {
+      final e = SharedExpense(
+        id: 'e1',
+        createdBy: 'u',
+        paidBy: 'u',
+        participants: const ['u', 'ana'],
+        people: const {'u': me, 'ana': ana},
+        title: 'Cena',
+        date: DateTime(2026, 10, 19),
+        currency: 'PEN',
+        totalMinor: 6666,
+        categoryId: 'food',
+        mode: SplitMode.equal,
+        shares: const {'u': 3333, 'ana': 3333},
+        updatedAt: DateTime(2026, 10, 19),
+      );
+      final split = Movement(
+        id: 'split:e1',
+        kind: MovementKind.expense,
+        amount: const Money(3333, 'PEN'),
+        categoryId: 'food',
+        date: e.date,
+        createdAt: now,
+        origin: MovementOrigin.split,
+        accountId: 'B',
+        paidMinor: 6666,
+      );
+      final social = MemorySocial(friends: [ana], expenses: [e]);
+      final settings = MemorySettings(const WalletSettings());
+      final movements = await pump(tester, social,
+          editing: e, existing: [split], accounts: [bank, savings], settings: settings);
+      await tester.enterText(find.widgetWithText(TextField, 'Cena'), 'Cena rica');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      expect(social.expenses.single.title, 'Cena rica');
+      expect(settings.value.splitAccountIds, isEmpty);
+      expect(movements.saved.single.accountId, 'B');
+    });
+
     testWidgets('al editar conserva la cuenta y cambiarla mueve el gasto de cuenta', (tester) async {
       final e = SharedExpense(
         id: 'e1',

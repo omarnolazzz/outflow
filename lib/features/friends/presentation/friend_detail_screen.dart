@@ -233,11 +233,11 @@ Future<void> offerSettlementAccount(
   String me,
   List<({SharedExpense expense, String debtor})> settled,
 ) async {
-  // Las cuentas pueden no estar cargadas aún (nadie las escuchaba).
+  // Las cuentas pueden no estar cargadas aún: se espera poco, la hoja es opcional.
   try {
-    await ref.read(accountsProvider.future);
+    await ref.read(accountsProvider.future).timeout(const Duration(seconds: 2));
   } catch (_) {
-    return;
+    // Sin cuentas a tiempo se usan las que haya (quizá ninguna).
   }
   if (!context.mounted) return;
   final involved = [
