@@ -23,6 +23,9 @@ abstract interface class PaymentListener {
   /// Paquetes que se leen ahora.
   Future<Set<String>> enabledApps();
   Future<void> setEnabled(String package, bool enabled);
+
+  /// Olvida las apps vistas y las elegidas: vuelven las de por defecto.
+  Future<void> clearCaptureSettings();
 }
 
 class ChannelPaymentListener implements PaymentListener {
@@ -86,6 +89,17 @@ class ChannelPaymentListener implements PaymentListener {
       // Sin canal no hay nada que guardar.
     } on MissingPluginException {
       // Idem (vista previa web).
+    }
+  }
+
+  @override
+  Future<void> clearCaptureSettings() async {
+    try {
+      await _channel.invokeMethod<void>('clearCaptureSettings');
+    } on PlatformException {
+      // Sin preferencias que borrar.
+    } on MissingPluginException {
+      // Idem (vista previa web o una versión nativa sin el método).
     }
   }
 }

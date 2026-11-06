@@ -142,4 +142,11 @@ object CaptureStore {
             prefs(context).edit().putString(ENABLED, overrides.toString()).apply()
         }
     }
+
+    /** Olvida las apps vistas y las elegidas: sin preferencias, se leen las de [SOURCES]. */
+    fun clearSettings(context: Context) {
+        synchronized(lock) {
+            prefs(context).edit().remove(SEEN).remove(ENABLED).commit()
+        }
+    }
 }

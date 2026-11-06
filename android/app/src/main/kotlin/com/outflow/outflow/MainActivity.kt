@@ -102,6 +102,11 @@ class MainActivity : FlutterFragmentActivity() {
                         result.success(null)
                     }
                 }
+                // "Borrar toda la información": se olvidan las apps vistas y las elegidas.
+                "clearCaptureSettings" -> {
+                    CaptureStore.clearSettings(this)
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }

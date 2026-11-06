@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:outflow/features/capture/data/capture_sources_repository.dart';
@@ -32,6 +33,9 @@ class _FakeListener implements PaymentListener {
     calls.add('$package:$value');
     value ? on.add(package) : on.remove(package);
   }
+
+  @override
+  Future<void> clearCaptureSettings() async {}
 }
 
 class _FakeSources implements CaptureSourcesRepository {
@@ -55,6 +59,27 @@ WalletAccount _account(String id, String name) => WalletAccount(
     );
 
 void main() {
+  group('canal outflow/payments', () {
+    const channel = MethodChannel('outflow/payments');
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    tearDown(() => messenger.setMockMethodCallHandler(channel, null));
+
+    test('clearCaptureSettings llama al método nativo', () async {
+      final calls = <String>[];
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        calls.add(call.method);
+        return null;
+      });
+      await const ChannelPaymentListener().clearCaptureSettings();
+      expect(calls, ['clearCaptureSettings']);
+    });
+
+    test('sin el método nativo (MissingPluginException) no falla', () async {
+      await expectLater(const ChannelPaymentListener().clearCaptureSettings(), completes);
+    });
+  });
+
   const bcp = CaptureApp(package: 'com.bcp.bank.bcp', label: 'BCP');
   const dale = CaptureApp(package: 'pe.dale.app', label: 'Dale');
 

@@ -62,15 +62,19 @@ class CaptureRunner {
     } while (_again);
   }
 
-  /// La wallet es de su dueña: otra sesión o bloqueada no la toca.
+  /// La wallet es de su dueña: otra sesión, bloqueada o borrándose no la toca.
   bool get _ownerReady {
     final session = _ref.read(sessionControllerProvider);
-    if (session is! Ready) return false;
+    if (session is! Ready || _ref.read(sessionControllerProvider.notifier).erasing) return false;
     return _ref.read(walletSettingsRepositoryProvider).read().ownerUid == session.account.uid;
   }
 
+  int get _generation => _ref.read(sessionControllerProvider.notifier).walletGeneration;
+
   Future<void> _once() async {
     if (!_ownerReady) return;
+    // Si se borra todo mientras tanto, lo leído es de la wallet anterior.
+    final generation = _generation;
     final inbox = _ref.read(captureInboxProvider);
     final events = await inbox.pending();
     if (events.isEmpty) {
@@ -99,7 +103,7 @@ class CaptureRunner {
       now: _ref.read(nowProvider),
     );
     // Si mientras tanto se borró todo o se cerró la sesión, no se escribe nada.
-    if (!_ownerReady) return;
+    if (!_ownerReady || generation != _generation) return;
     if (outcome.upsert.isNotEmpty) await movementRepo.saveAll(outcome.upsert);
     // Solo ahora: un corte antes deja los eventos, y reprocesar no duplica.
     await inbox.commit();

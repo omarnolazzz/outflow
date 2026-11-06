@@ -209,4 +209,29 @@ void main() {
     expect(c.read(sessionControllerProvider), isA<SignedOut>());
     expect(auth.current, isNull);
   });
+
+  group('sesión perdida', () {
+    test('si cerrar la sesión falla, igual pasa a SignedOut con el aviso', () async {
+      auth = _ThrowingSignOut()..current = gabriel;
+      settings.value = const WalletSettings(onboardingDone: true, ownerUid: 'u1');
+      final c = await start();
+      expect(c.read(sessionControllerProvider), isA<Locked>());
+      await c.read(sessionControllerProvider.notifier).sessionLost();
+      final s = c.read(sessionControllerProvider);
+      expect(s, isA<SignedOut>());
+      expect((s as SignedOut).notice, 'Tu cuenta se abrió en otro dispositivo.');
+    });
+
+    test('sin cuenta en la sesión no pone el aviso', () async {
+      final c = await start();
+      expect(c.read(sessionControllerProvider), isA<SignedOut>());
+      await c.read(sessionControllerProvider.notifier).sessionLost();
+      expect((c.read(sessionControllerProvider) as SignedOut).notice, isNull);
+    });
+  });
+}
+
+class _ThrowingSignOut extends FakeAuth {
+  @override
+  Future<void> signOut() async => throw StateError('sin red');
 }

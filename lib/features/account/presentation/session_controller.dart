@@ -9,6 +9,7 @@ import '../../capture/data/capture_inbox.dart';
 import '../../capture/data/capture_key.dart';
 import '../../friends/presentation/friends_providers.dart';
 import '../../notifications/data/charge_answer_inbox.dart';
+import '../../wallet/data/payment_listener.dart';
 import '../../wallet/domain/default_categories.dart';
 import '../../wallet/domain/wallet_settings.dart';
 import '../../wallet/presentation/wallet_providers.dart';
@@ -119,6 +120,16 @@ class SessionController extends Notifier<SessionState> {
   bool _bioAvailable = false;
   String _bioLabel = 'Face ID';
 
+  int _walletGeneration = 0;
+  bool _erasing = false;
+
+  /// Cambia cada vez que se borra la wallet: una tarea que empezó con otro valor
+  /// trae datos de la wallet anterior y no debe escribirlos.
+  int get walletGeneration => _walletGeneration;
+
+  /// Se está borrando toda la información: nadie más escribe en la wallet.
+  bool get erasing => _erasing;
+
   @override
   SessionState build() {
     Future.microtask(_load);
@@ -208,8 +219,17 @@ class SessionController extends Notifier<SessionState> {
   /// Otro dispositivo abrió la cuenta: se cierra la sesión aquí, pero la
   /// wallet local y su dueña (`ownerUid`) quedan como estaban.
   Future<void> sessionLost() async {
-    await _auth.signOut();
-    state = const SignedOut(notice: 'Tu cuenta se abrió en otro dispositivo.');
+    try {
+      await _auth.signOut();
+    } catch (e) {
+      debugPrint('No se pudo cerrar la sesión: ${e.runtimeType}');
+    } finally {
+      // Aunque falle el cierre, aquí la sesión ya no vale. Si no queda cuenta
+      // (ya se cerró por otra vía), no hay nada que avisar.
+      if (state is Ready || state is Locked || state is NeedsOnboarding) {
+        state = const SignedOut(notice: 'Tu cuenta se abrió en otro dispositivo.');
+      }
+    }
   }
 
   /// Solo se llama al pulsar el botón: nunca automáticamente.
@@ -241,6 +261,20 @@ class SessionController extends Notifier<SessionState> {
       _ => null,
     };
     if (account == null) return;
+    // Antes de vaciar nada: una pasada de captura en curso leyó la wallet vieja
+    // y no puede escribirla en la nueva.
+    _erasing = true;
+    _walletGeneration++;
+    try {
+      await _erase(account);
+    } finally {
+      _walletGeneration++;
+      _erasing = false;
+    }
+    state = NeedsOnboarding(account, short: false);
+  }
+
+  Future<void> _erase(Account account) async {
     // Lo de la nube no espera al servidor: sin red se completa al volver.
     unawaited(ref.read(socialRepositoryProvider).forgetMe().catchError((Object e) {
       debugPrint('No se pudo borrar lo compartido: $e');
@@ -268,7 +302,14 @@ class SessionController extends Notifier<SessionState> {
     } catch (_) {
       // Sin clave que olvidar.
     }
-    state = NeedsOnboarding(account, short: false);
+    // En Android, las apps vistas y elegidas para la captura viven en el lado nativo.
+    if (isAndroidDevice) {
+      try {
+        await ref.read(paymentListenerProvider).clearCaptureSettings();
+      } catch (_) {
+        // Sin canal (o sin el método): no hay preferencias que olvidar.
+      }
+    }
   }
 
   Future<void> signOut() async {
