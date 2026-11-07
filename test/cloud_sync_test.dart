@@ -175,8 +175,10 @@ void main() {
   late _Secure secure;
   final spies = <String, _Spy>{};
 
-  _Spy spyFor(String uid) => spies[uid] ??= _Spy(FirestoreCloudWalletStore(db, uid));
-  CloudWalletStore cloudOf(String uid) => FirestoreCloudWalletStore(db, uid);
+  _Spy spyFor(String uid) => spies[uid] ??= _Spy(FirestoreCloudWalletStore(db, uid, writer: store.installToken));
+
+  /// Otro dispositivo de la misma cuenta.
+  CloudWalletStore cloudOf(String uid) => FirestoreCloudWalletStore(db, uid, writer: () => 'otro-dispositivo');
 
   setUp(() async {
     dir = Directory.systemTemp.createTempSync('outflow_cloud');
@@ -453,6 +455,24 @@ void main() {
       expect(_box(store, LocalStore.movementsBox).keys.toSet(), {'m1', 'm-other'});
     });
 
+    test('las escrituras propias encoladas antes del borrado no lo deshacen al reconectar', () async {
+      final c = await migrated('u1');
+      c.dispose();
+      // Este teléfono borró todo sin red: lo local ya es la wallet nueva.
+      await store.applyRemoteAll(LocalStore.movementsBox, {'m1': null, 'm-fresh': _mov('m-fresh', 5).toJson()});
+      secure.values['outflow.cloud.pendingWipe.u1'] =
+          jsonEncode({'token': token(), 'at': DateTime.now().subtract(const Duration(hours: 1)).toIso8601String()});
+      // Al volver la red llegan sus propias escrituras de antes del borrado.
+      await spyFor('u1').inner.put(LocalStore.movementsBox, 'm-offline', _mov('m-offline', 9).toJson());
+
+      final again = open(gabriel);
+      await _until(() => stateOf(again) == CloudSyncState.live && spyFor('u1').wipes == 1);
+      final cloud = await cloudOf('u1').readAll();
+      expect(cloud[LocalStore.movementsBox]!.keys.toSet(), {'m-fresh'}, reason: 'la nube vacía más lo de después del borrado');
+      expect(_box(store, LocalStore.movementsBox).keys.toSet(), {'m-fresh'});
+      expect(secure.values['outflow.cloud.pendingWipe.u1'], isNull);
+    });
+
     test('sin nada más nuevo, termina el borrado', () async {
       final c = await migrated('u1');
       c.dispose();
@@ -474,6 +494,29 @@ void main() {
       expect(secure.values['outflow.cloud.pendingWipe.u1'], isNull);
       expect((await cloudOf('u1').readAll())[LocalStore.movementsBox]!.keys.toSet(), {'m1'});
     });
+  });
+
+  test('el pendiente queda anotado antes de escribir el dato', () async {
+    await migrated('u1');
+    final sync = store.beforeChange!;
+    final seen = <String>[];
+    store.beforeChange = (box, ids, {required deleted}) async {
+      await sync(box, ids, deleted: deleted);
+      for (final id in ids) {
+        // En este punto el dato aún no está escrito, pero el pendiente sí.
+        seen.add('$id dato:${store.read(box, id) != null} pendiente:${store.isDirty(box, id)}');
+      }
+    };
+    await store.write(LocalStore.movementsBox, 'm-a', _mov('m-a', 1).toJson());
+    await store.writeAll(LocalStore.movementsBox, {'m-b': _mov('m-b', 2).toJson()});
+    await store.remove(LocalStore.movementsBox, 'm1');
+    await store.write(LocalStore.settingsBox, 'account.preview', const {'signedIn': true});
+    expect(seen, [
+      'm-a dato:false pendiente:true',
+      'm-b dato:false pendiente:true',
+      'm1 dato:true pendiente:true',
+      'account.preview dato:false pendiente:false',
+    ]);
   });
 
   test('Review Focus 4: lo local de otra cuenta no se sube, queda la copia y vuelve a su dueño', () async {

@@ -44,8 +44,8 @@ abstract interface class CloudWalletStore {
   Stream<CloudSnapshot> watch(String box);
   Future<DateTime?> resetAt();
 
-  /// Lo más reciente del servidor: el `updatedAt` de cualquier documento o el
-  /// `resetAt` de la raíz (null si no hay nada).
+  /// Lo más reciente del servidor escrito por otra instalación: el `updatedAt`
+  /// de un documento ajeno o el `resetAt` de la raíz (null si no hay nada).
   Future<DateTime?> lastChangeAt();
 
   /// Borra todas las colecciones y escribe `resetAt`.
@@ -81,9 +81,12 @@ Object? _walk(Object? v, String Function(String) key) {
 Map<String, Object?> _decodeJson(Object? raw) => (_walk(raw, _decodeKey) as Map).cast<String, Object?>();
 
 class FirestoreCloudWalletStore implements CloudWalletStore {
-  FirestoreCloudWalletStore(this._db, this._uid);
+  FirestoreCloudWalletStore(this._db, this._uid, {this.writer});
   final FirebaseFirestore _db;
   final String _uid;
+
+  /// Id de la instalación que escribe: cada documento lo lleva en `writer`.
+  final String? Function()? writer;
 
   static const _server = GetOptions(source: Source.server);
 
@@ -95,10 +98,14 @@ class FirestoreCloudWalletStore implements CloudWalletStore {
     if (!isSynced(box, id)) throw ArgumentError.value(id, 'id', 'Documento no sincronizado');
   }
 
-  Map<String, Object?> _data(Map<String, Object?> json) => {
-        'json': _walk(json, _encodeKey),
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
+  Map<String, Object?> _data(Map<String, Object?> json) {
+    final writer = this.writer?.call();
+    return {
+      'json': _walk(json, _encodeKey),
+      'updatedAt': FieldValue.serverTimestamp(),
+      'writer': ?writer,
+    };
+  }
 
   Never _unavailable(FirebaseException e) =>
       throw CloudUnavailable(permissionDenied: e.code == 'permission-denied', cause: e);
@@ -203,6 +210,7 @@ class FirestoreCloudWalletStore implements CloudWalletStore {
       if (d != null && (latest == null || d.isAfter(latest!))) latest = d;
     }
 
+    final me = writer?.call();
     try {
       final reset = (await _root.get(_server)).data()?['resetAt'];
       if (reset is String) see(DateTime.tryParse(reset));
@@ -210,6 +218,8 @@ class FirestoreCloudWalletStore implements CloudWalletStore {
         final snap = await _col(box).get(_server);
         if (snap.metadata.isFromCache) throw const CloudUnavailable(permissionDenied: false);
         for (final d in snap.docs) {
+          // Lo que esta instalación encoló antes de borrar llega después, pero no es nuevo.
+          if (me != null && d.data()['writer'] == me) continue;
           final updated = d.data()['updatedAt'];
           if (updated is Timestamp) see(updated.toDate());
         }

@@ -7,7 +7,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../../core/config/firebase_config.dart';
 import '../../../core/di/core_providers.dart';
@@ -33,7 +32,7 @@ final cloudWalletStoreProvider = Provider<CloudWalletStore?>((ref) {
   final uid = ref.watch(currentAccountProvider.select((a) => a?.uid));
   final auth = ref.watch(authServiceProvider);
   if (kIsWeb || !FirebaseConfig.usable || !auth.verifiesIdentity || uid == null) return null;
-  return FirestoreCloudWalletStore(FirebaseFirestore.instance, uid);
+  return FirestoreCloudWalletStore(FirebaseFirestore.instance, uid, writer: ref.read(localStoreProvider).installToken);
 });
 
 /// Directorio privado de la app donde se guarda la copia de otra cuenta.
@@ -136,6 +135,9 @@ class _Run {
   /// El borrado en curso es de una wallet ya migrada (si no, la nube no se toca).
   bool erasingMigrated = false;
 
+  /// El `beforeChange` que este run puso en [store].
+  Object? hook;
+
   /// Cambios remotos que esperan a un snapshot sin escrituras pendientes, o
   /// borrados de caché que esperan al servidor. caja -> id -> json.
   final deferred = <String, Map<String, Map<String, Object?>?>>{};
@@ -176,7 +178,12 @@ class CloudSync extends Notifier<CloudSyncState> {
       backupDir: ref.read(cloudBackupDirProvider),
     );
     _run = run;
-    // Desde ya: lo que se edite mientras se decide no se pierde.
+    // Desde ya: lo que se edite mientras se decide no se pierde. El pendiente
+    // se anota antes del dato y otra vez después (con un seq nuevo).
+    Future<void> hook(String box, Iterable<String> ids, {required bool deleted}) =>
+        _beforeLocal(run, box, ids, deleted: deleted);
+    run.hook = hook;
+    run.store.beforeChange = hook;
     run.local = run.store.changes.listen((c) => _onLocal(run, c));
     ref.onDispose(() => _dispose(run));
     Future.microtask(() => _op(run, (epoch) => _connect(run, epoch)));
@@ -483,6 +490,18 @@ class CloudSync extends Notifier<CloudSyncState> {
 
   // --------------------------------------------------------- local → nube
 
+  /// Antes de escribir: el pendiente queda en Hive primero.
+  Future<void> _beforeLocal(_Run run, String box, Iterable<String> ids, {required bool deleted}) async {
+    if (!run.alive || run.paused) return;
+    final synced = [for (final id in ids) if (isSynced(box, id)) id];
+    if (synced.isEmpty) return;
+    try {
+      await run.store.markDirtyAll(box, synced, deleted: deleted, seq: ++_seq);
+    } catch (e) {
+      debugPrint('No se pudo anotar un cambio pendiente: ${e.runtimeType}');
+    }
+  }
+
   void _onLocal(_Run run, StoreChange c) {
     if (!run.alive || run.paused || !isSynced(c.box, c.id)) return;
     final key = (c.box, c.id);
@@ -641,6 +660,7 @@ class CloudSync extends Notifier<CloudSyncState> {
 
   void _dispose(_Run run) {
     run.alive = false;
+    if (identical(run.store.beforeChange, run.hook)) run.store.beforeChange = null;
     run.local?.cancel();
     _stopWatches(run);
     if (identical(_run, run)) _run = null;
@@ -721,13 +741,8 @@ class CloudSync extends Notifier<CloudSyncState> {
     await run.store.applyRemote(LocalStore.settingsBox, _walletSettingsId, {...json, 'ownerUid': run.uid});
   }
 
-  Future<String> _installToken(_Run run) async {
-    final current = run.store.read(LocalStore.settingsBox, _installId)?['token'];
-    if (current is String) return current;
-    final token = const Uuid().v4();
-    await run.store.applyRemote(LocalStore.settingsBox, _installId, {'token': token});
-    return token;
-  }
+  /// El mismo id que firma los documentos en la nube (`writer`).
+  Future<String> _installToken(_Run run) async => run.store.installToken();
 
   Future<bool> _isMigrated(_Run run, String uid) async {
     final mark = await run.secure.read(key: _migratedKey(uid));

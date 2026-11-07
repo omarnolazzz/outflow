@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 /// Un cambio local de un documento; [json] nulo significa borrado.
 class StoreChange {
@@ -122,18 +123,31 @@ class LocalStore {
           e.key as String: (jsonDecode(e.value) as Map).cast<String, Object?>(),
       };
 
+  /// Se llama (y se espera) antes de escribir o borrar desde la app, para
+  /// que el espejo anote el pendiente antes que el dato: si la app se cierra
+  /// a medias, queda un pendiente sin cambio (inofensivo), nunca al revés.
+  Future<void> Function(String box, Iterable<String> ids, {required bool deleted})? beforeChange;
+
+  Future<void> _before(String box, Iterable<String> ids, {required bool deleted}) async {
+    final hook = beforeChange;
+    if (hook != null) await hook(box, ids, deleted: deleted);
+  }
+
   Future<void> write(String box, String id, Map<String, Object?> json) async {
+    await _before(box, [id], deleted: false);
     await _box(box).put(id, jsonEncode(json));
     _changes.add(StoreChange(box, id, json));
   }
 
   Future<void> remove(String box, String id) async {
+    await _before(box, [id], deleted: true);
     await _box(box).delete(id);
     _changes.add(StoreChange(box, id, null));
   }
 
   /// Escritura en bloque (una sola ráfaga de cambios para los observadores).
   Future<void> writeAll(String box, Map<String, Map<String, Object?>> docs) async {
+    await _before(box, docs.keys, deleted: false);
     await _box(box).putAll({for (final e in docs.entries) e.key: jsonEncode(e.value)});
     for (final e in docs.entries) {
       _changes.add(StoreChange(box, e.key, e.value));
@@ -142,6 +156,7 @@ class LocalStore {
 
   Future<void> removeAll(String box, Iterable<String> ids) async {
     final list = ids.toList();
+    await _before(box, list, deleted: true);
     await _box(box).deleteAll(list);
     for (final id in list) {
       _changes.add(StoreChange(box, id, null));
@@ -185,6 +200,16 @@ class LocalStore {
     removed.forEach(_changes.add);
   }
 
+  /// Id de esta instalación; se crea la primera vez. Hive lo ve en memoria al
+  /// momento, aunque el disco termine después.
+  String installToken() {
+    final current = read(settingsBox, installKey)?['token'];
+    if (current is String) return current;
+    final token = const Uuid().v4();
+    unawaited(_box(settingsBox).put(installKey, jsonEncode({'token': token})));
+    return token;
+  }
+
   // ------------------------------------------------- pendientes de la nube
 
   String _dirtyKey(String box, String id) => '$box/$id';
@@ -193,6 +218,12 @@ class LocalStore {
   /// de uno que ya se envió.
   Future<void> markDirty(String box, String id, {required bool deleted, required int seq}) =>
       _box(dirtyBox).put(_dirtyKey(box, id), jsonEncode({'op': deleted ? 'delete' : 'put', 'seq': seq}));
+
+  /// Como [markDirty] para varios ids de una vez.
+  Future<void> markDirtyAll(String box, Iterable<String> ids, {required bool deleted, required int seq}) =>
+      _box(dirtyBox).putAll({
+        for (final id in ids) _dirtyKey(box, id): jsonEncode({'op': deleted ? 'delete' : 'put', 'seq': seq}),
+      });
 
   bool isDirty(String box, String id) => _box(dirtyBox).containsKey(_dirtyKey(box, id));
 

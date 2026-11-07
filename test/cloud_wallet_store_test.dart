@@ -139,4 +139,19 @@ void main() {
     await store.wipe(later);
     expect(await store.lastChangeAt(), later);
   });
+
+  test('cada documento lleva la instalación que lo escribió y lastChangeAt ignora las propias', () async {
+    final mine = FirestoreCloudWalletStore(db, 'u1', writer: () => 'yo');
+    await mine.put('movements', 'm1', {'id': 'm1'});
+    await mine.uploadAll({
+      'movements': {'m2': <String, Object?>{'id': 'm2'}},
+    });
+    final raw = await db.collection('wallets').doc('u1').collection('movements').doc('m1').get();
+    expect(raw.data()!['writer'], 'yo');
+    final raw2 = await db.collection('wallets').doc('u1').collection('movements').doc('m2').get();
+    expect(raw2.data()!['writer'], 'yo');
+    expect(await mine.lastChangeAt(), isNull, reason: 'solo hay escrituras propias');
+    await FirestoreCloudWalletStore(db, 'u1', writer: () => 'otro').put('movements', 'm3', {'id': 'm3'});
+    expect(await mine.lastChangeAt(), isNotNull);
+  });
 }
