@@ -7,6 +7,7 @@ import '../../../core/di/core_providers.dart';
 import '../../../core/storage/local_store.dart';
 import '../../capture/data/capture_inbox.dart';
 import '../../capture/data/capture_key.dart';
+import '../../cloud/presentation/cloud_sync.dart';
 import '../../friends/presentation/friends_providers.dart';
 import '../../notifications/data/charge_answer_inbox.dart';
 import '../../wallet/data/payment_listener.dart';
@@ -265,11 +266,17 @@ class SessionController extends Notifier<SessionState> {
     // y no puede escribirla en la nueva.
     _erasing = true;
     _walletGeneration++;
+    // La copia en la nube también se borra (sin esperar al servidor); el
+    // espejo no refleja el vaciado documento a documento.
+    final cloud = ref.read(cloudEraseHooksProvider);
+    final at = DateTime.now();
     try {
+      await cloud.begin(at);
       await _erase(account);
     } finally {
       _walletGeneration++;
       _erasing = false;
+      cloud.end(at);
     }
     state = NeedsOnboarding(account, short: false);
   }

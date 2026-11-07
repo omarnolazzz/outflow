@@ -116,4 +116,15 @@ void main() {
     whenCalling(Invocation.method(#get, [const GetOptions(source: Source.server)])).on(ref).thenThrow(FirebaseException(plugin: 'cloud_firestore', code: 'unavailable'));
     await expectLater(store.resetAt(), throwsA(isA<CloudUnavailable>().having((e) => e.permissionDenied, 'denied', false)));
   });
+
+  test('put y delete traducen permiso denegado a CloudUnavailable', () async {
+    final doc = db.collection('wallets').doc('u1').collection('movements').doc('m1');
+    final denied = FirebaseException(plugin: 'cloud_firestore', code: 'permission-denied');
+    whenCalling(Invocation.method(#set, null)).on(doc).thenThrow(denied);
+    whenCalling(Invocation.method(#delete, null)).on(doc).thenThrow(denied);
+    await expectLater(store.put('movements', 'm1', {'id': 'm1'}),
+        throwsA(isA<CloudUnavailable>().having((e) => e.permissionDenied, 'denied', true)));
+    await expectLater(
+        store.delete('movements', 'm1'), throwsA(isA<CloudUnavailable>().having((e) => e.permissionDenied, 'denied', true)));
+  });
 }

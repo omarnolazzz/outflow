@@ -99,14 +99,23 @@ class FirestoreCloudWalletStore implements CloudWalletStore {
   Never _unavailable(FirebaseException e) =>
       throw CloudUnavailable(permissionDenied: e.code == 'permission-denied', cause: e);
 
-  @override
-  Future<void> put(String box, String id, Map<String, Object?> json) {
-    _check(box, id);
-    return _col(box).doc(id).set(_data(json));
+  /// Traduce los errores de Firestore de una escritura suelta.
+  Future<void> _write(Future<void> Function() f) async {
+    try {
+      await f();
+    } on FirebaseException catch (e) {
+      _unavailable(e);
+    }
   }
 
   @override
-  Future<void> delete(String box, String id) => _col(box).doc(id).delete();
+  Future<void> put(String box, String id, Map<String, Object?> json) {
+    _check(box, id);
+    return _write(() => _col(box).doc(id).set(_data(json)));
+  }
+
+  @override
+  Future<void> delete(String box, String id) => _write(() => _col(box).doc(id).delete());
 
   @override
   Future<Map<String, Map<String, Map<String, Object?>>>> readAll() async {
@@ -166,6 +175,10 @@ class FirestoreCloudWalletStore implements CloudWalletStore {
           fromCache: snap.metadata.isFromCache,
           hasPendingWrites: snap.metadata.hasPendingWrites,
         );
+      }).handleError((Object e) {
+        // Un permiso denegado (reglas sin publicar) se distingue de la red.
+        if (e is FirebaseException) _unavailable(e);
+        throw e;
       });
 
   @override
@@ -183,7 +196,8 @@ class FirestoreCloudWalletStore implements CloudWalletStore {
   Future<void> wipe(DateTime at) async {
     try {
       for (final box in _allBoxes) {
-        final snap = await _col(box).get();
+        final snap = await _col(box).get(_server);
+        if (snap.metadata.isFromCache) throw const CloudUnavailable(permissionDenied: false);
         final refs = snap.docs.map((d) => d.reference).toList();
         for (var i = 0; i < refs.length; i += _batchSize) {
           final batch = _db.batch();

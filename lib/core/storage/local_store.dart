@@ -109,6 +109,12 @@ class LocalStore {
         for (final raw in _box(box).values) (jsonDecode(raw) as Map).cast<String, Object?>(),
       ];
 
+  /// Documentos de [box] por id (los JSON no siempre llevan su id dentro).
+  Map<String, Map<String, Object?>> readById(String box) => {
+        for (final e in _box(box).toMap().entries)
+          e.key as String: (jsonDecode(e.value) as Map).cast<String, Object?>(),
+      };
+
   Future<void> write(String box, String id, Map<String, Object?> json) async {
     await _box(box).put(id, jsonEncode(json));
     _changes.add(StoreChange(box, id, json));

@@ -17,6 +17,7 @@ import 'features/account/presentation/session_controller.dart';
 import 'features/account/presentation/welcome_screen.dart';
 import 'features/capture/presentation/capture_link_handler.dart';
 import 'features/capture/presentation/capture_providers.dart';
+import 'features/cloud/presentation/cloud_sync.dart';
 import 'features/notifications/data/charge_answer_inbox.dart';
 import 'features/merchants/presentation/screens/catalog_screen.dart';
 import 'features/onboarding/presentation/onboarding_flow.dart';
@@ -122,6 +123,8 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
     // "Hoy" puede haber cambiado: recalcula fechas relativas y reprograma avisos.
     ref.invalidate(nowProvider);
     _applyQueuedAnswers();
+    // Reintenta la nube o comprueba si otro dispositivo borró todo.
+    ref.read(cloudSyncProvider.notifier).onResume().ignore();
     if (hiddenAt != null && DateTime.now().difference(hiddenAt) > _relockAfter) {
       ref.read(sessionControllerProvider.notifier).lock();
     }
@@ -266,6 +269,10 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
 
     // Una cuenta de Google solo vive en un dispositivo: el último en entrar gana.
     ref.watch(deviceSessionGuardProvider);
+
+    // La wallet se refleja en la nube de la cuenta (migración una vez y espejo
+    // en vivo). Escuchar lo mantiene vivo sin reconstruir la app en cada estado.
+    ref.listen(cloudSyncProvider, (_, _) {});
 
     ref.listen(sessionControllerProvider, (prev, next) {
       if (next is Ready && prev is! Ready) _publishProfile(next.account);
