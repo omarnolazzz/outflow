@@ -55,10 +55,12 @@ final walletDownloadedProvider = Provider<void Function()>((ref) => () {
 /// registra aquí al construirse; sin espejo activo no hace nada.
 class CloudEraseHooks {
   Future<void> Function(DateTime at)? _begin;
-  void Function(DateTime at)? _end;
+  void Function(DateTime at, {required bool completed})? _end;
 
   Future<void> begin(DateTime at) async => _begin?.call(at);
-  void end(DateTime at) => _end?.call(at);
+
+  /// [completed] es falso si el borrado local falló a medias.
+  void end(DateTime at, {required bool completed}) => _end?.call(at, completed: completed);
 }
 
 final cloudEraseHooksProvider = Provider<CloudEraseHooks>((ref) => CloudEraseHooks());
@@ -77,7 +79,7 @@ String _pendingWipeKey(String uid) => 'outflow.cloud.pendingWipe.$uid';
 /// Id de esta instalación (caja de ajustes, no se sincroniza). El llavero del
 /// iPhone sobrevive a reinstalar y Hive no: la marca de migrado solo vale si
 /// coincide con este id.
-const _installId = 'cloud.install';
+const _installId = LocalStore.installKey;
 const _walletSettingsId = 'wallet.settings';
 
 final List<String> _cloudBoxes = [...kSyncedBoxes, LocalStore.settingsBox];
@@ -124,11 +126,15 @@ class _Run {
   StreamSubscription<StoreChange>? local;
   final watches = <StreamSubscription<CloudSnapshot>>[];
 
-  /// Cambios locales aún sin enviar (se lee lo que haya en Hive al enviarlos).
-  final pending = <_Key>{};
+  /// Envíos en curso por id, con el `seq` del pendiente que llevan (para no
+  /// repetir uno que sigue esperando a la red).
+  final sending = <_Key, int>{};
 
-  /// Envíos sin confirmar: lo remoto de esos ids no pisa lo local.
-  final inFlight = <_Key, int>{};
+  /// Las escrituras en curso (el borrado espera a que terminen, con límite).
+  final sends = <Future<void>>{};
+
+  /// El borrado en curso es de una wallet ya migrada (si no, la nube no se toca).
+  bool erasingMigrated = false;
 
   /// Cambios remotos que esperan a un snapshot sin escrituras pendientes, o
   /// borrados de caché que esperan al servidor. caja -> id -> json.
@@ -140,11 +146,15 @@ class _Run {
   /// La parte en la nube de un borrado en curso.
   Future<void>? wipe;
 
-  bool busy(_Key k) => pending.contains(k) || (inFlight[k] ?? 0) > 0;
+  /// Hay un cambio local sin confirmar: lo remoto no lo pisa.
+  bool busy(_Key k) => store.isDirty(k.$1, k.$2);
 }
 
 class CloudSync extends Notifier<CloudSyncState> {
   _Run? _run;
+
+  /// Distingue cada cambio anotado como pendiente.
+  int _seq = DateTime.now().microsecondsSinceEpoch;
 
   @override
   CloudSyncState build() {
@@ -184,8 +194,8 @@ class CloudSync extends Notifier<CloudSyncState> {
       final cloud = await _net(run, epoch, run.cloud.readAll());
       final reset = await _net(run, epoch, run.cloud.resetAt());
       final local = _snapshot(run);
-      // Lo editado desde aquí gana y se envía al quedar en vivo.
-      run.pending.clear();
+      // Lo de antes va en la unión; lo editado desde aquí gana y se envía al quedar en vivo.
+      await run.store.clearAllDirty();
       final up = mergeForUpload(local: local, cloud: cloud);
       if (up.values.any((b) => b.isNotEmpty)) await _net(run, epoch, run.cloud.uploadAll(up));
       await _replace(run, epoch, _overlay(cloud, up));
@@ -203,7 +213,7 @@ class CloudSync extends Notifier<CloudSyncState> {
       _set(run, CloudSyncState.syncing);
       final cloud = await _net(run, epoch, run.cloud.readAll());
       final reset = await _net(run, epoch, run.cloud.resetAt());
-      run.pending.clear();
+      await run.store.clearAllDirty();
       await _replace(run, epoch, cloud);
       await _markMigrated(run, epoch, reset);
       _downloaded(run);
@@ -229,13 +239,19 @@ class CloudSync extends Notifier<CloudSyncState> {
       case CloudSyncState.live:
         await _op(run, (epoch) async {
           try {
-            if (await _checkReset(run, epoch)) _startWatches(run);
+            if (await _checkReset(run, epoch)) {
+              _goLive(run);
+              return;
+            }
           } on CloudUnavailable catch (e) {
-            // Sin red el espejo sigue: las escrituras se encolan.
-            if (e.permissionDenied) rethrow;
+            // Sin red el espejo sigue (las escrituras se encolan), salvo que el
+            // reinicio ya hubiera empezado.
+            if (e.permissionDenied || !run.forwarding) rethrow;
           } on TimeoutException {
-            // Igual: se comprobará la próxima vez.
+            if (!run.forwarding) rethrow;
           }
+          // Lo rechazado o aún sin confirmar se reintenta.
+          _flushDirty(run);
         });
       case CloudSyncState.idle || CloudSyncState.syncing || CloudSyncState.needsChoice:
         return;
@@ -243,36 +259,65 @@ class CloudSync extends Notifier<CloudSyncState> {
   }
 
   /// Antes de "Borrar toda la información": el espejo deja de enviar y de
-  /// aplicar, y empieza a vaciar la nube (sin esperar al servidor).
+  /// aplicar. Si la wallet ya estaba en la nube, empieza a vaciarla (sin esperar
+  /// al servidor); si no, la nube no se toca y luego se vuelve a decidir.
   Future<void> beginErase(DateTime at) async {
     final run = _run;
     if (run == null) return;
     run.epoch++;
     run.paused = true;
     run.forwarding = false;
-    run.pending.clear();
     _stopWatches(run);
+    run.erasingMigrated = await _isMigrated(run, run.uid);
+    if (!run.erasingMigrated) return;
     try {
-      // Si la app se cierra antes de terminar, se completa en la próxima apertura.
-      await run.secure.write(key: _pendingWipeKey(run.uid), value: at.toIso8601String());
+      // Si la app se cierra antes de terminar, se completa en la próxima
+      // apertura de esta misma instalación.
+      final token = await _installToken(run);
+      await run.secure.write(
+        key: _pendingWipeKey(run.uid),
+        value: jsonEncode({'token': token, 'at': at.toIso8601String()}),
+      );
       await run.secure.write(key: _loadedAtKey(run.uid), value: at.toIso8601String());
     } catch (e) {
       debugPrint('No se pudo anotar el borrado en la nube: ${e.runtimeType}');
     }
-    final wipe = run.cloud.wipe(at);
+    await run.store.clearAllDirty();
+    // Lo que ya iba camino de la nube llega antes del borrado, no después.
+    final inFlight = run.sends.toList();
+    final wipe = () async {
+      try {
+        await Future.wait(inFlight).timeout(const Duration(seconds: 3));
+      } catch (_) {
+        // Sin red o rechazado: no frena el borrado.
+      }
+      await run.cloud.wipe(at);
+    }();
     run.wipe = wipe;
     unawaited(wipe.then<void>((_) {}, onError: (Object _) {}));
   }
 
   /// Tras vaciar el teléfono: cuando la nube quede vacía sube la wallet nueva
   /// y vuelve el espejo.
-  void endErase(DateTime at) {
+  void endErase(DateTime at, {required bool completed}) {
     final run = _run;
     if (run == null) return;
     run.paused = false;
+    if (!run.erasingMigrated) {
+      // Sin marca: lo local quedó vacío y la migración se decide de nuevo.
+      unawaited(_op(run, (epoch) => _connect(run, epoch)));
+      return;
+    }
+    if (!completed) {
+      // No se sube una wallet a medio borrar. El borrado en la nube queda
+      // anotado y se completa al reintentar o en la próxima apertura.
+      run.epoch++;
+      _set(run, CloudSyncState.unavailable);
+      return;
+    }
     unawaited(_op(run, (epoch) async {
       _set(run, CloudSyncState.syncing);
-      await _finishErase(run, epoch, at);
+      await _finishErase(run, epoch, at, leftover: false);
     }));
   }
 
@@ -282,10 +327,10 @@ class CloudSync extends Notifier<CloudSyncState> {
     _set(run, CloudSyncState.syncing);
     final uid = run.uid;
 
-    final wipeAt = await run.secure.read(key: _pendingWipeKey(uid));
+    final wipeAt = await _readPendingWipe(run);
     _guard(run, epoch);
     if (wipeAt != null) {
-      await _finishErase(run, epoch, DateTime.parse(wipeAt));
+      await _finishErase(run, epoch, wipeAt, leftover: true);
       return;
     }
 
@@ -294,10 +339,8 @@ class CloudSync extends Notifier<CloudSyncState> {
 
     if (await _isMigrated(run, uid)) {
       _guard(run, epoch);
-      // La decisión ya se tomó en esta instalación: lo local se envía desde ya
-      // (sin red, Firestore lo encola).
-      run.forwarding = true;
-      _flush(run);
+      // La decisión ya se tomó en esta instalación. Lo editado queda anotado
+      // como pendiente y solo se envía tras comprobar que nadie borró todo.
       await _checkReset(run, epoch);
       _goLive(run);
       return;
@@ -327,13 +370,13 @@ class CloudSync extends Notifier<CloudSyncState> {
     switch (decideMigration(local: local, cloud: cloud, uid: uid, localOwner: _localOwner(run))) {
       case MigrationCase.upload:
         // Lo editado mientras sube queda pendiente y se envía al terminar.
-        run.pending.clear();
+        await run.store.clearAllDirty();
         await _net(run, epoch, run.cloud.uploadAll(_toCloudAll(local)));
         await _markMigrated(run, epoch, reset);
         _goLive(run);
       case MigrationCase.download:
         // Lo local es solo lo predeterminado: lo de la nube lo reemplaza.
-        run.pending.clear();
+        await run.store.clearAllDirty();
         await _replace(run, epoch, cloud);
         await _markMigrated(run, epoch, reset);
         _downloaded(run);
@@ -354,7 +397,7 @@ class CloudSync extends Notifier<CloudSyncState> {
     _guard(run, epoch);
     if (!ownerInCloud && !isEffectivelyEmpty(snapshot)) await _writeBackup(run, owner, snapshot);
     _guard(run, epoch);
-    run.pending.clear();
+    await run.store.clearAllDirty();
     for (final box in _cloudBoxes) {
       final ids = run.store.readById(box).keys.where((id) => isSynced(box, id));
       await run.store.applyRemoteAll(box, {for (final id in ids) id: null});
@@ -371,7 +414,10 @@ class CloudSync extends Notifier<CloudSyncState> {
     final loaded = await _readDate(run, _loadedAtKey(run.uid));
     _guard(run, epoch);
     if (loaded != null && !reset.isAfter(loaded)) return false;
+    // Lo pendiente de aquí es de la wallet anterior: se descarta, no se envía.
+    run.forwarding = false;
     _stopWatches(run);
+    await run.store.clearAllDirty();
     final cloud = await _net(run, epoch, run.cloud.readAll());
     await _replace(run, epoch, cloud);
     await _stampLoaded(run, reset);
@@ -379,12 +425,30 @@ class CloudSync extends Notifier<CloudSyncState> {
     return true;
   }
 
-  Future<void> _finishErase(_Run run, int epoch, DateTime at) async {
+  /// Termina un borrado: vacía la nube y sube la wallet nueva. Con [leftover]
+  /// (anotado en otra apertura), antes mira si otro dispositivo escribió
+  /// después; entonces no se borra nada y se descarga.
+  Future<void> _finishErase(_Run run, int epoch, DateTime at, {required bool leftover}) async {
+    if (leftover) {
+      final last = await _net(run, epoch, run.cloud.lastChangeAt());
+      if (last != null && last.isAfter(at)) {
+        await run.secure.delete(key: _pendingWipeKey(run.uid));
+        _guard(run, epoch);
+        final cloud = await _net(run, epoch, run.cloud.readAll());
+        final reset = await _net(run, epoch, run.cloud.resetAt());
+        await run.store.clearAllDirty();
+        await _replace(run, epoch, cloud);
+        await _markMigrated(run, epoch, reset);
+        _downloaded(run);
+        _goLive(run);
+        return;
+      }
+    }
     final started = run.wipe;
     run.wipe = null;
     await _net(run, epoch, started ?? run.cloud.wipe(at));
     final local = _snapshot(run);
-    run.pending.clear();
+    await run.store.clearAllDirty();
     await _net(run, epoch, run.cloud.uploadAll(_toCloudAll(local)));
     await _markMigrated(run, epoch, at);
     await run.secure.delete(key: _pendingWipeKey(run.uid));
@@ -392,9 +456,27 @@ class CloudSync extends Notifier<CloudSyncState> {
     _goLive(run);
   }
 
+  /// La hora del borrado pendiente de esta instalación; uno de otra (el llavero
+  /// del iPhone sobrevive a reinstalar) se olvida.
+  Future<DateTime?> _readPendingWipe(_Run run) async {
+    final raw = await run.secure.read(key: _pendingWipeKey(run.uid));
+    if (raw == null) return null;
+    try {
+      final json = jsonDecode(raw) as Map;
+      final token = run.store.read(LocalStore.settingsBox, _installId)?['token'];
+      final at = DateTime.tryParse(json['at'] as String? ?? '');
+      if (at != null && token != null && json['token'] == token) return at;
+    } catch (_) {
+      // Formato desconocido: se olvida.
+    }
+    await run.secure.delete(key: _pendingWipeKey(run.uid));
+    return null;
+  }
+
   void _goLive(_Run run) {
     run.forwarding = true;
-    _flush(run);
+    // Antes de escuchar: lo pendiente sale primero y lo remoto no lo pisa.
+    _flushDirty(run);
     _startWatches(run);
     _set(run, CloudSyncState.live);
   }
@@ -404,48 +486,51 @@ class CloudSync extends Notifier<CloudSyncState> {
   void _onLocal(_Run run, StoreChange c) {
     if (!run.alive || run.paused || !isSynced(c.box, c.id)) return;
     final key = (c.box, c.id);
-    if (run.forwarding) {
-      _send(run, key, c.json);
-    } else {
-      run.pending.add(key);
+    // Primero queda anotado en Hive; solo entonces se intenta la red.
+    run.store.markDirty(c.box, c.id, deleted: c.json == null, seq: ++_seq).then<void>(
+      (_) {
+        if (run.alive && run.forwarding && !run.paused) _send(run, key);
+      },
+      onError: (Object e) => debugPrint('No se pudo anotar un cambio pendiente: ${e.runtimeType}'),
+    );
+  }
+
+  /// Envía lo pendiente que no esté ya en camino.
+  void _flushDirty(_Run run) {
+    for (final k in run.store.dirtyKeys()) {
+      if (isSynced(k.$1, k.$2)) _send(run, k);
     }
   }
 
-  void _flush(_Run run) {
-    final keys = run.pending.toList();
-    run.pending.clear();
-    for (final k in keys) {
-      _send(run, k, run.store.read(k.$1, k.$2));
-    }
-  }
-
-  /// Sin esperar al servidor: sin red no termina hasta que vuelve.
-  void _send(_Run run, _Key key, Map<String, Object?>? json) {
+  /// Sin esperar al servidor: sin red no termina hasta que vuelve. El
+  /// pendiente solo se quita cuando el servidor confirma ese mismo cambio.
+  void _send(_Run run, _Key key) {
     final (box, id) = key;
-    run.inFlight[key] = (run.inFlight[key] ?? 0) + 1;
+    final seq = run.store.dirtySeq(box, id);
+    if (seq == null || run.sending[key] == seq) return;
+    final json = run.store.read(box, id);
+    run.sending[key] = seq;
     Future<void> write;
     try {
       write = json == null ? run.cloud.delete(box, id) : run.cloud.put(box, id, toCloud(box, id, json));
     } catch (e) {
       write = Future.error(e);
     }
-    void done() {
-      final n = (run.inFlight[key] ?? 1) - 1;
-      if (n <= 0) {
-        run.inFlight.remove(key);
-      } else {
-        run.inFlight[key] = n;
-      }
+    run.sends.add(write);
+    void settled() {
+      run.sends.remove(write);
+      if (run.sending[key] == seq) run.sending.remove(key);
     }
 
-    write.then<void>((_) => done(), onError: (Object e) {
-      done();
+    write.then<void>((_) async {
+      settled();
+      await run.store.clearDirty(box, id, seq: seq);
+    }, onError: (Object e) {
+      // Queda pendiente: se reintenta al volver a primer plano o al reabrir.
+      settled();
       if (!run.alive) return;
-      // Se reenvía al reintentar, con lo que haya entonces en Hive.
-      run.pending.add(key);
-      final denied = e is CloudUnavailable && e.permissionDenied;
       debugPrint('No se pudo guardar en la nube: ${e.runtimeType}');
-      if (denied) _unavailable(run, permissionDenied: true);
+      if (e is CloudUnavailable && e.permissionDenied) _unavailable(run, permissionDenied: true);
     });
   }
 

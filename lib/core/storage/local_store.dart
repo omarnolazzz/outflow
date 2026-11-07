@@ -28,6 +28,13 @@ class LocalStore {
   static const categoriesBox = 'categories';
   static const accountsBox = 'accounts';
 
+  /// Cambios sincronizados que la nube aún no confirmó (`caja/id` → op). No se
+  /// sincroniza ni avisa en [changes]: sobrevive a cerrar la app.
+  static const dirtyBox = 'sync_dirty';
+
+  /// Id de esta instalación en la caja de ajustes: [clearAll] lo conserva.
+  static const installKey = 'cloud.install';
+
   static const _keyName = 'outflow.hive.key';
 
   final Map<String, Box<String>> _boxes;
@@ -48,7 +55,7 @@ class LocalStore {
     return LocalStore._(boxes);
   }
 
-  static const _names = [subscriptionsBox, merchantsBox, settingsBox, movementsBox, categoriesBox, accountsBox];
+  static const _names = [subscriptionsBox, merchantsBox, settingsBox, movementsBox, categoriesBox, accountsBox, dirtyBox];
 
   static Future<LocalStore> open(FlutterSecureStorage secure) async {
     await Hive.initFlutter('outflow');
@@ -164,17 +171,49 @@ class LocalStore {
     ]);
   }
 
-  /// Vacía todas las cajas (la clave de cifrado se conserva) y avisa del
-  /// borrado de cada documento que existía.
+  /// Vacía todas las cajas (la clave de cifrado y el id de instalación se
+  /// conservan) y avisa del borrado de cada documento que existía.
   Future<void> clearAll() async {
     final removed = <StoreChange>[];
     for (final entry in _boxes.entries) {
-      final ids = entry.value.keys.cast<String>().toList();
+      final keep = entry.key == settingsBox ? entry.value.get(installKey) : null;
+      final ids = entry.value.keys.cast<String>().where((id) => !(entry.key == settingsBox && id == installKey)).toList();
       await entry.value.clear();
+      if (keep != null) await entry.value.put(installKey, keep);
       removed.addAll([for (final id in ids) StoreChange(entry.key, id, null)]);
     }
     removed.forEach(_changes.add);
   }
+
+  // ------------------------------------------------- pendientes de la nube
+
+  String _dirtyKey(String box, String id) => '$box/$id';
+
+  /// Anota un cambio de [box]/[id] aún sin confirmar; [seq] distingue uno nuevo
+  /// de uno que ya se envió.
+  Future<void> markDirty(String box, String id, {required bool deleted, required int seq}) =>
+      _box(dirtyBox).put(_dirtyKey(box, id), jsonEncode({'op': deleted ? 'delete' : 'put', 'seq': seq}));
+
+  bool isDirty(String box, String id) => _box(dirtyBox).containsKey(_dirtyKey(box, id));
+
+  int? dirtySeq(String box, String id) {
+    final raw = _box(dirtyBox).get(_dirtyKey(box, id));
+    return raw == null ? null : (jsonDecode(raw) as Map)['seq'] as int?;
+  }
+
+  /// Los `(caja, id)` pendientes, en orden de inserción.
+  List<(String, String)> dirtyKeys() => [
+        for (final k in _box(dirtyBox).keys.cast<String>())
+          if (k.indexOf('/') case final i when i > 0) (k.substring(0, i), k.substring(i + 1)),
+      ];
+
+  /// Quita el pendiente; con [seq], solo si no hubo otro cambio después.
+  Future<void> clearDirty(String box, String id, {int? seq}) async {
+    if (seq != null && dirtySeq(box, id) != seq) return;
+    await _box(dirtyBox).delete(_dirtyKey(box, id));
+  }
+
+  Future<void> clearAllDirty() => _box(dirtyBox).clear();
 
   /// Emite el contenido actual y lo re-emite en cada cambio de la caja.
   Stream<List<Map<String, Object?>>> watchAll(String box) async* {

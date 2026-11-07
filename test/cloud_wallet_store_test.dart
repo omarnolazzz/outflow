@@ -127,4 +127,16 @@ void main() {
     await expectLater(
         store.delete('movements', 'm1'), throwsA(isA<CloudUnavailable>().having((e) => e.permissionDenied, 'denied', true)));
   });
+
+  test('lastChangeAt da la escritura más reciente o el resetAt', () async {
+    expect(await store.lastChangeAt(), isNull);
+    final before = DateTime.now().subtract(const Duration(minutes: 1));
+    await store.put('movements', 'm1', {'id': 'm1'});
+    final last = await store.lastChangeAt();
+    expect(last, isNotNull);
+    expect(last!.isAfter(before), isTrue);
+    final later = DateTime.now().add(const Duration(days: 1));
+    await store.wipe(later);
+    expect(await store.lastChangeAt(), later);
+  });
 }

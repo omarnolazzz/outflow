@@ -20,6 +20,8 @@ import 'package:outflow/features/cloud/domain/migration_plan.dart';
 import 'package:outflow/features/cloud/presentation/cloud_sync.dart';
 import 'package:outflow/features/friends/presentation/friends_providers.dart';
 import 'package:outflow/features/wallet/data/hive_movement_repository.dart';
+import 'package:outflow/features/wallet/data/wallet_settings_repository.dart';
+import 'package:outflow/features/wallet/presentation/wallet_providers.dart';
 import 'package:outflow/features/wallet/domain/account_balances.dart';
 import 'package:outflow/features/wallet/domain/default_categories.dart';
 import 'package:outflow/features/wallet/domain/month_summary.dart';
@@ -75,6 +77,12 @@ class _Spy implements CloudWalletStore {
   /// `uploadAll` no termina nunca (sin red).
   bool hangUpload = false;
 
+  /// `put`/`delete` no terminan ni llegan (sin red y la app se cierra).
+  bool hangWrites = false;
+
+  /// `resetAt` espera a que se complete.
+  Completer<void>? resetGate;
+
   /// Con [manual], `watch` devuelve estos controladores en vez de Firestore.
   bool manual = false;
   final watchers = <String, StreamController<CloudSnapshot>>{};
@@ -87,15 +95,20 @@ class _Spy implements CloudWalletStore {
 
   @override
   Future<void> put(String box, String id, Map<String, Object?> json) => _guard(() {
+        if (hangWrites) return Completer<void>().future;
         puts.add('$box/$id');
         return inner.put(box, id, json);
       });
 
   @override
   Future<void> delete(String box, String id) => _guard(() {
+        if (hangWrites) return Completer<void>().future;
         deletes.add('$box/$id');
         return inner.delete(box, id);
       });
+
+  @override
+  Future<DateTime?> lastChangeAt() => _guard(inner.lastChangeAt);
 
   @override
   Future<WalletDocs> readAll() => _guard(inner.readAll);
@@ -118,7 +131,10 @@ class _Spy implements CloudWalletStore {
   }
 
   @override
-  Future<DateTime?> resetAt() => _guard(inner.resetAt);
+  Future<DateTime?> resetAt() => _guard(() async {
+        await resetGate?.future;
+        return inner.resetAt();
+      });
 
   @override
   Future<void> wipe(DateTime at) => _guard(() {
@@ -322,6 +338,142 @@ void main() {
     await _until(() => spyFor('u1').puts.contains('movements/m9'));
     expect((await cloudOf('u1').readAll())[LocalStore.movementsBox]!.containsKey('m9'), isTrue);
     expect(_box(store, LocalStore.movementsBox).containsKey('m9'), isTrue);
+  });
+
+  group('cambios sin confirmar tras reabrir la app', () {
+    test('un cambio rechazado (reglas sin publicar) llega a la nube al reabrir y no se revierte', () async {
+      final c = await migrated('u1');
+      spyFor('u1').failWith = const CloudUnavailable(permissionDenied: true);
+      await store.write(LocalStore.movementsBox, 'm1', _mov('m1', 1111).toJson());
+      await _until(() => stateOf(c) == CloudSyncState.unavailable);
+      c.dispose();
+      spyFor('u1').failWith = null;
+
+      final again = open(gabriel);
+      await _until(() => stateOf(again) == CloudSyncState.live);
+      await _until(() => !store.isDirty(LocalStore.movementsBox, 'm1'));
+      await pumpEventQueue();
+      expect((await cloudOf('u1').readAll())[LocalStore.movementsBox]!['m1']!['amount'], {'minor': 1111, 'currency': 'PEN'});
+      expect(_box(store, LocalStore.movementsBox)['m1']!['amount'], {'minor': 1111, 'currency': 'PEN'});
+    });
+
+    test('mientras el servidor no confirma, lo de la nube no pisa el cambio local al reabrir', () async {
+      final c = await migrated('u1');
+      spyFor('u1').hangWrites = true;
+      await store.write(LocalStore.movementsBox, 'm1', _mov('m1', 2222).toJson());
+      await pumpEventQueue();
+      c.dispose();
+
+      // Sigue sin red para las escrituras: la escucha trae la versión vieja.
+      final again = open(gabriel);
+      await _until(() => stateOf(again) == CloudSyncState.live);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(_box(store, LocalStore.movementsBox)['m1']!['amount'], {'minor': 2222, 'currency': 'PEN'});
+      expect(store.isDirty(LocalStore.movementsBox, 'm1'), isTrue);
+    });
+
+    test('un borrado sin enviar no resucita al reabrir y se borra en la nube', () async {
+      final c = await migrated('u1');
+      spyFor('u1').hangWrites = true;
+      await HiveMovementRepository(store).delete('m1');
+      await pumpEventQueue();
+      c.dispose();
+      spyFor('u1').hangWrites = false;
+
+      final again = open(gabriel);
+      await _until(() => stateOf(again) == CloudSyncState.live);
+      await _until(() => spyFor('u1').deletes.contains('movements/m1'));
+      await pumpEventQueue();
+      expect(_box(store, LocalStore.movementsBox).containsKey('m1'), isFalse);
+      expect((await cloudOf('u1').readAll())[LocalStore.movementsBox] ?? {}, isEmpty);
+    });
+
+    test('un documento nuevo sin enviar se sube al reabrir', () async {
+      final c = await migrated('u1');
+      spyFor('u1').hangWrites = true;
+      await store.write(LocalStore.movementsBox, 'm-new', _mov('m-new', 3).toJson());
+      await pumpEventQueue();
+      c.dispose();
+      spyFor('u1').hangWrites = false;
+
+      final again = open(gabriel);
+      await _until(() => stateOf(again) == CloudSyncState.live);
+      await _until(() => spyFor('u1').puts.contains('movements/m-new'));
+      await pumpEventQueue();
+      expect((await cloudOf('u1').readAll())[LocalStore.movementsBox]!.containsKey('m-new'), isTrue);
+      expect(_box(store, LocalStore.movementsBox).containsKey('m-new'), isTrue);
+    });
+
+    test('lo escrito antes de comprobar resetAt no sube si otro teléfono borró todo', () async {
+      final b = await migrated('u1');
+      b.dispose();
+      // El teléfono A borra todo mientras B está sin red.
+      await cloudOf('u1').wipe(DateTime.now().add(const Duration(hours: 1)));
+      await cloudOf('u1').put(LocalStore.movementsBox, 'm-a', _mov('m-a', 1).toJson());
+      final spy = spyFor('u1')
+        ..puts.clear()
+        ..deletes.clear()
+        ..resetGate = Completer<void>();
+
+      final again = open(gabriel);
+      // La sincronización de cobros escribe antes de que llegue resetAt.
+      await store.write(LocalStore.movementsBox, 'sub:s1:2026-11-01', _mov('sub:s1:2026-11-01', 999).toJson());
+      await pumpEventQueue();
+      expect(spy.puts, isEmpty, reason: 'nada se envía antes de comprobar resetAt');
+      spy.resetGate!.complete();
+      await _until(() => stateOf(again) == CloudSyncState.live);
+      await pumpEventQueue();
+      expect(spy.puts, isEmpty);
+      expect(spy.deletes, isEmpty);
+      final cloud = await cloudOf('u1').readAll();
+      expect(cloud[LocalStore.movementsBox]!.keys.toSet(), {'m-a'});
+      for (final box in kSyncedBoxes) {
+        expect(_box(store, box), cloud[box] ?? {}, reason: box);
+      }
+      expect(store.dirtyKeys(), isEmpty);
+    });
+  });
+
+  group('borrado pendiente de otra apertura', () {
+    String token() => store.read(LocalStore.settingsBox, LocalStore.installKey)!['token'] as String;
+
+    test('si otro dispositivo escribió después, no se borra la nube y se descarga', () async {
+      final c = await migrated('u1');
+      c.dispose();
+      secure.values['outflow.cloud.pendingWipe.u1'] =
+          jsonEncode({'token': token(), 'at': DateTime.now().subtract(const Duration(hours: 1)).toIso8601String()});
+      await cloudOf('u1').put(LocalStore.movementsBox, 'm-other', _mov('m-other', 2).toJson());
+
+      final again = open(gabriel);
+      await _until(() => stateOf(again) == CloudSyncState.live);
+      expect(spyFor('u1').wipes, 0);
+      expect(secure.values['outflow.cloud.pendingWipe.u1'], isNull);
+      final cloud = await cloudOf('u1').readAll();
+      expect(cloud[LocalStore.movementsBox]!.keys.toSet(), {'m1', 'm-other'});
+      expect(_box(store, LocalStore.movementsBox).keys.toSet(), {'m1', 'm-other'});
+    });
+
+    test('sin nada más nuevo, termina el borrado', () async {
+      final c = await migrated('u1');
+      c.dispose();
+      secure.values['outflow.cloud.pendingWipe.u1'] =
+          jsonEncode({'token': token(), 'at': DateTime.now().add(const Duration(minutes: 5)).toIso8601String()});
+      final again = open(gabriel);
+      await _until(() => stateOf(again) == CloudSyncState.live && spyFor('u1').wipes == 1);
+      expect(secure.values['outflow.cloud.pendingWipe.u1'], isNull);
+    });
+
+    test('la marca de otra instalación se ignora', () async {
+      final c = await migrated('u1');
+      c.dispose();
+      secure.values['outflow.cloud.pendingWipe.u1'] =
+          jsonEncode({'token': 'otra-instalacion', 'at': DateTime.now().add(const Duration(minutes: 5)).toIso8601String()});
+      final again = open(gabriel);
+      await _until(() => stateOf(again) == CloudSyncState.live);
+      expect(spyFor('u1').wipes, 0);
+      expect(secure.values['outflow.cloud.pendingWipe.u1'], isNull);
+      expect((await cloudOf('u1').readAll())[LocalStore.movementsBox]!.keys.toSet(), {'m1'});
+    });
   });
 
   test('Review Focus 4: lo local de otra cuenta no se sube, queda la copia y vuelve a su dueño', () async {
@@ -652,6 +804,50 @@ void main() {
       expect(_box(store, LocalStore.movementsBox), isEmpty);
     });
 
+    test('borrar sin haber migrado (preguntando) no toca la nube y vuelve a decidir', () async {
+      await owner('u1');
+      await store.write(LocalStore.movementsBox, 'm-local', _mov('m-local', 10).toJson());
+      await cloudOf('u1').uploadAll({
+        LocalStore.movementsBox: {'m-cloud': _mov('m-cloud', 20).toJson()},
+      });
+      final c = ProviderContainer(overrides: session(FakeAuth(current: gabriel)));
+      addTearDown(c.dispose);
+      c.listen(cloudSyncProvider, (_, _) {});
+      await _until(() => stateOf(c) == CloudSyncState.needsChoice);
+
+      await c.read(sessionControllerProvider.notifier).eraseEverything();
+      await _until(() => stateOf(c) == CloudSyncState.live);
+      final spy = spyFor('u1');
+      expect(spy.wipes, 0);
+      expect(spy.uploads, isEmpty);
+      final cloud = await cloudOf('u1').readAll();
+      expect(cloud[LocalStore.movementsBox]!.keys.toSet(), {'m-cloud'});
+      for (final box in kSyncedBoxes) {
+        expect(_box(store, box), cloud[box] ?? {}, reason: box);
+      }
+      expect(secure.values['outflow.cloud.pendingWipe.u1'], isNull);
+    });
+
+    test('si el borrado local falla, no se sube la wallet a medio borrar', () async {
+      await owner('u1');
+      await store.write(LocalStore.movementsBox, 'm1', _mov('m1', 1000).toJson());
+      final settings = _FailingSettings(store);
+      final c = ProviderContainer(overrides: [
+        ...session(FakeAuth(current: gabriel)),
+        walletSettingsRepositoryProvider.overrideWithValue(settings),
+      ]);
+      addTearDown(c.dispose);
+      c.listen(cloudSyncProvider, (_, _) {});
+      await _until(() => stateOf(c) == CloudSyncState.live);
+      final spy = spyFor('u1')..uploads.clear();
+      settings.fail = true;
+
+      await expectLater(c.read(sessionControllerProvider.notifier).eraseEverything(), throwsA(isA<StateError>()));
+      await _until(() => stateOf(c) == CloudSyncState.unavailable);
+      await pumpEventQueue();
+      expect(spy.uploads, isEmpty);
+    });
+
     test('reinstalar: tras descargar una wallet ya configurada, la sesión no repite la configuración', () async {
       await cloudOf('u1').uploadAll({
         LocalStore.settingsBox: {
@@ -667,6 +863,18 @@ void main() {
       expect(c.read(sessionControllerProvider), isA<Ready>());
     });
   });
+}
+
+/// Ajustes de Hive que pueden fallar al guardar (borrado local a medias).
+class _FailingSettings extends HiveWalletSettingsRepository {
+  _FailingSettings(super.store);
+  bool fail = false;
+
+  @override
+  Future<void> save(WalletSettings settings) {
+    if (fail) throw StateError('disco lleno');
+    return super.save(settings);
+  }
 }
 
 /// Un valor que el test cambia a mano (para simular cerrar sesión).

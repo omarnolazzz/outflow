@@ -270,13 +270,15 @@ class SessionController extends Notifier<SessionState> {
     // espejo no refleja el vaciado documento a documento.
     final cloud = ref.read(cloudEraseHooksProvider);
     final at = DateTime.now();
+    var completed = false;
     try {
       await cloud.begin(at);
       await _erase(account);
+      completed = true;
     } finally {
       _walletGeneration++;
       _erasing = false;
-      cloud.end(at);
+      cloud.end(at, completed: completed);
     }
     state = NeedsOnboarding(account, short: false);
   }

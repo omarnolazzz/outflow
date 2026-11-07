@@ -44,6 +44,10 @@ abstract interface class CloudWalletStore {
   Stream<CloudSnapshot> watch(String box);
   Future<DateTime?> resetAt();
 
+  /// Lo más reciente del servidor: el `updatedAt` de cualquier documento o el
+  /// `resetAt` de la raíz (null si no hay nada).
+  Future<DateTime?> lastChangeAt();
+
   /// Borra todas las colecciones y escribe `resetAt`.
   Future<void> wipe(DateTime at);
 }
@@ -190,6 +194,30 @@ class FirestoreCloudWalletStore implements CloudWalletStore {
     } on FirebaseException catch (e) {
       _unavailable(e);
     }
+  }
+
+  @override
+  Future<DateTime?> lastChangeAt() async {
+    DateTime? latest;
+    void see(DateTime? d) {
+      if (d != null && (latest == null || d.isAfter(latest!))) latest = d;
+    }
+
+    try {
+      final reset = (await _root.get(_server)).data()?['resetAt'];
+      if (reset is String) see(DateTime.tryParse(reset));
+      for (final box in _allBoxes) {
+        final snap = await _col(box).get(_server);
+        if (snap.metadata.isFromCache) throw const CloudUnavailable(permissionDenied: false);
+        for (final d in snap.docs) {
+          final updated = d.data()['updatedAt'];
+          if (updated is Timestamp) see(updated.toDate());
+        }
+      }
+    } on FirebaseException catch (e) {
+      _unavailable(e);
+    }
+    return latest;
   }
 
   @override
