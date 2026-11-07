@@ -45,8 +45,11 @@ class _Bio implements Biometrics {
 }
 
 class _StateCloud extends CloudSync {
-  _StateCloud(this.initial);
+  _StateCloud(this.initial, {this.migrated = false});
   final CloudSyncState initial;
+  final bool migrated;
+  @override
+  Future<bool> willEraseCloud() async => migrated;
   @override
   CloudSyncState build() => initial;
 }
@@ -57,7 +60,7 @@ void main() {
   late MemoryAccounts accounts;
   late MemoryMovements movements;
 
-  Future<void> pump(WidgetTester tester, {List<Movement> existing = const [], CloudSyncState cloud = CloudSyncState.idle}) async {
+  Future<void> pump(WidgetTester tester, {List<Movement> existing = const [], CloudSyncState cloud = CloudSyncState.idle, bool migrated = false}) async {
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
@@ -67,7 +70,7 @@ void main() {
     settings = MemorySettings(WalletSettings(onboardingDone: true, walletStartedAt: DateTime(2026, 10, 1)));
     await tester.pumpWidget(ProviderScope(
       overrides: [
-        cloudSyncProvider.overrideWith(() => _StateCloud(cloud)),
+        cloudSyncProvider.overrideWith(() => _StateCloud(cloud, migrated: migrated)),
         authServiceProvider.overrideWithValue(auth),
         biometricsProvider.overrideWithValue(_Bio()),
         walletSettingsRepositoryProvider.overrideWithValue(settings),
@@ -112,20 +115,24 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  for (final s in [CloudSyncState.live, CloudSyncState.syncing]) {
-    testWidgets('con la nube en uso ($s), borrar avisa de la copia en la nube y el pie cambia', (tester) async {
-      await pump(tester, cloud: s);
-      await toFooter(tester);
-      expect(find.text(cloudFooter, skipOffstage: false), findsOneWidget);
-      expect(find.text(localFooter, skipOffstage: false), findsNothing);
+  testWidgets('en vivo el pie habla de la cuenta de Google', (tester) async {
+    await pump(tester, cloud: CloudSyncState.live, migrated: true);
+    await toFooter(tester);
+    expect(find.text(cloudFooter, skipOffstage: false), findsOneWidget);
+    expect(find.text(localFooter, skipOffstage: false), findsNothing);
+  });
+
+  for (final s in [CloudSyncState.live, CloudSyncState.syncing, CloudSyncState.unavailable]) {
+    testWidgets('migrada ($s), borrar avisa de la copia en la nube', (tester) async {
+      await pump(tester, cloud: s, migrated: true);
       await openErase(tester);
       expect(find.textContaining(cloudLine), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }
 
-  for (final s in [CloudSyncState.idle, CloudSyncState.unavailable, CloudSyncState.needsChoice]) {
-    testWidgets('sin la nube en uso ($s), borrar no la menciona y el pie sigue local', (tester) async {
+  for (final s in [CloudSyncState.idle, CloudSyncState.syncing, CloudSyncState.unavailable, CloudSyncState.needsChoice]) {
+    testWidgets('sin migrar ($s), borrar no la menciona y el pie sigue local', (tester) async {
       await pump(tester, cloud: s);
       await toFooter(tester);
       expect(find.text(localFooter, skipOffstage: false), findsOneWidget);

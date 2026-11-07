@@ -155,6 +155,24 @@ void main() {
     });
   });
 
+  testWidgets('si pasa a live con el diálogo de confirmar abierto, se cierran ambos y se puede reabrir', (tester) async {
+    await openChoice(tester);
+    await tester.tap(find.text('Usar solo los de la nube'));
+    await tester.pumpAndSettle();
+    cloud.emit(CloudSyncState.live);
+    await tester.pumpAndSettle();
+    expect(find.text(_title), findsNothing);
+    expect(find.textContaining('No se puede deshacer'), findsNothing);
+    cloud.emit(CloudSyncState.needsChoice);
+    await tester.pumpAndSettle();
+    expect(find.text(_title), findsOneWidget);
+  });
+
+  testWidgets('con needsChoice ya presente al montar, la hoja se abre', (tester) async {
+    await pump(tester, CloudSyncState.needsChoice);
+    expect(find.text(_title), findsOneWidget);
+  });
+
   group('aviso', () {
     testWidgets('en unavailable se ve y al tocarlo reintenta', (tester) async {
       await pump(tester, CloudSyncState.unavailable);

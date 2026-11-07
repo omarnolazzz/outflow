@@ -151,15 +151,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await ref.read(sessionControllerProvider.notifier).signOut();
   }
 
-  /// La wallet está en la nube de la cuenta (o pasando a ella). En la vista
-  /// previa y sin conexión sigue siendo solo local.
-  bool get _cloudInUse {
-    final s = ref.read(cloudSyncStateProvider);
-    return s == CloudSyncState.live || s == CloudSyncState.syncing;
-  }
-
   Future<void> _eraseEverything() async {
-    final inCloud = _cloudInUse;
+    // Solo si el borrado va a vaciar la nube (la wallet ya migró), no por el estado.
+    final inCloud = await ref.read(cloudSyncProvider.notifier).willEraseCloud();
+    if (!mounted) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -198,8 +193,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final rule = ref.watch(globalRuleProvider).value ?? NotificationRule.defaults;
     final session = ref.read(sessionControllerProvider.notifier);
     final bioLabel = session.biometricsLabel;
-    final cloudState = ref.watch(cloudSyncStateProvider);
-    final cloudInUse = cloudState == CloudSyncState.live || cloudState == CloudSyncState.syncing;
+    // En vivo la wallet ya está en la nube de la cuenta.
+    final cloudInUse = ref.watch(cloudSyncStateProvider) == CloudSyncState.live;
 
     var order = 0;
     Widget e(Widget child) => Entrance(index: order++, child: child);

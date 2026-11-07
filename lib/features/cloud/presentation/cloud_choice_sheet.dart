@@ -23,6 +23,15 @@ class CloudChoiceTrigger extends ConsumerStatefulWidget {
 class _CloudChoiceTriggerState extends ConsumerState<CloudChoiceTrigger> {
   bool _open = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // Puede haber una decisión pendiente desde antes de montar.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _check();
+    });
+  }
+
   void _check() {
     if (_open) return;
     if (ref.read(cloudSyncStateProvider) != CloudSyncState.needsChoice) return;
@@ -65,13 +74,22 @@ class _CloudChoiceSheet extends ConsumerStatefulWidget {
 
 class _CloudChoiceSheetState extends ConsumerState<_CloudChoiceSheet> {
   bool _busy = false;
+  bool _confirming = false;
 
   Future<void> _run(Future<void> Function() action) async {
     setState(() => _busy = true);
-    await action();
+    try {
+      await action();
+    } finally {
+      // Si siguió pendiente de decidir (la acción no hizo nada), vuelve a poder elegir.
+      if (mounted && ref.read(cloudSyncStateProvider) == CloudSyncState.needsChoice) {
+        setState(() => _busy = false);
+      }
+    }
   }
 
   Future<void> _cloudOnly() async {
+    _confirming = true;
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -88,6 +106,7 @@ class _CloudChoiceSheetState extends ConsumerState<_CloudChoiceSheet> {
         ],
       ),
     );
+    _confirming = false;
     if (ok != true || !mounted) return;
     await _run(ref.read(cloudSyncProvider.notifier).chooseCloudOnly);
   }
@@ -97,7 +116,13 @@ class _CloudChoiceSheetState extends ConsumerState<_CloudChoiceSheet> {
     // Hecho (en vivo) o fallido (el aviso de Inicio toma el relevo): la hoja se va.
     ref.listen(cloudSyncStateProvider, (_, next) {
       if (next == CloudSyncState.live || next == CloudSyncState.unavailable || next == CloudSyncState.idle) {
-        Navigator.of(context).pop();
+        // Quita la hoja aunque el diálogo de confirmar esté encima.
+        final route = ModalRoute.of(context);
+        if (_confirming) {
+          _confirming = false;
+          Navigator.of(context).pop();
+        }
+        if (route != null && route.isActive) Navigator.of(context).removeRoute(route);
       }
     });
     final working = _busy || ref.watch(cloudSyncStateProvider) == CloudSyncState.syncing;

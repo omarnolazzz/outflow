@@ -228,6 +228,14 @@ class CloudSync extends Notifier<CloudSyncState> {
     });
   }
 
+  /// Si "Borrar toda la información" también vaciará la nube: solo cuando esta
+  /// instalación ya migró la wallet de la cuenta abierta (igual que [beginErase]).
+  Future<bool> willEraseCloud() async {
+    final run = _run;
+    if (run == null) return false;
+    return _isMigrated(run, run.uid);
+  }
+
   /// Reintenta tras [CloudSyncState.unavailable] (aviso tocado o al volver).
   Future<void> retry() async {
     final run = _run;
