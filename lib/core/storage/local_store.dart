@@ -5,6 +5,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
+/// Un cambio local de un documento; [json] nulo significa borrado.
+class StoreChange {
+  const StoreChange(this.box, this.id, this.json);
+  final String box;
+  final String id;
+  final Map<String, Object?>? json;
+}
+
 /// Persistencia local cifrada.
 ///
 /// Cada caja de Hive guarda documentos JSON (String) por id; así no hace falta
@@ -23,6 +31,12 @@ class LocalStore {
   static const _keyName = 'outflow.hive.key';
 
   final Map<String, Box<String>> _boxes;
+
+  final _changes = StreamController<StoreChange>.broadcast(sync: true);
+
+  /// Cambios hechos por la app (no por [applyRemote]), emitidos cuando la
+  /// escritura en Hive ya terminó. Sirve para reflejarlos en la nube.
+  Stream<StoreChange> get changes => _changes.stream;
 
   /// Cajas sin cifrar en [Hive.init] (tests).
   @visibleForTesting
@@ -95,22 +109,65 @@ class LocalStore {
         for (final raw in _box(box).values) (jsonDecode(raw) as Map).cast<String, Object?>(),
       ];
 
-  Future<void> write(String box, String id, Map<String, Object?> json) =>
-      _box(box).put(id, jsonEncode(json));
+  Future<void> write(String box, String id, Map<String, Object?> json) async {
+    await _box(box).put(id, jsonEncode(json));
+    _changes.add(StoreChange(box, id, json));
+  }
 
-  Future<void> remove(String box, String id) => _box(box).delete(id);
+  Future<void> remove(String box, String id) async {
+    await _box(box).delete(id);
+    _changes.add(StoreChange(box, id, null));
+  }
 
   /// Escritura en bloque (una sola ráfaga de cambios para los observadores).
-  Future<void> writeAll(String box, Map<String, Map<String, Object?>> docs) =>
-      _box(box).putAll({for (final e in docs.entries) e.key: jsonEncode(e.value)});
-
-  Future<void> removeAll(String box, Iterable<String> ids) => _box(box).deleteAll(ids);
-
-  /// Vacía todas las cajas (la clave de cifrado se conserva).
-  Future<void> clearAll() async {
-    for (final box in _boxes.values) {
-      await box.clear();
+  Future<void> writeAll(String box, Map<String, Map<String, Object?>> docs) async {
+    await _box(box).putAll({for (final e in docs.entries) e.key: jsonEncode(e.value)});
+    for (final e in docs.entries) {
+      _changes.add(StoreChange(box, e.key, e.value));
     }
+  }
+
+  Future<void> removeAll(String box, Iterable<String> ids) async {
+    final list = ids.toList();
+    await _box(box).deleteAll(list);
+    for (final id in list) {
+      _changes.add(StoreChange(box, id, null));
+    }
+  }
+
+  /// Aplica un cambio llegado de la nube: escribe (o borra si [json] es nulo)
+  /// sin emitir en [changes], para no devolverlo a la nube.
+  Future<void> applyRemote(String box, String id, Map<String, Object?>? json) async {
+    if (json == null) {
+      await _box(box).delete(id);
+    } else {
+      await _box(box).put(id, jsonEncode(json));
+    }
+  }
+
+  /// Como [applyRemote] pero en bloque; un valor nulo borra ese id.
+  Future<void> applyRemoteAll(String box, Map<String, Map<String, Object?>?> docs) async {
+    final b = _box(box);
+    await b.putAll({
+      for (final e in docs.entries)
+        if (e.value != null) e.key: jsonEncode(e.value),
+    });
+    await b.deleteAll([
+      for (final e in docs.entries)
+        if (e.value == null) e.key,
+    ]);
+  }
+
+  /// Vacía todas las cajas (la clave de cifrado se conserva) y avisa del
+  /// borrado de cada documento que existía.
+  Future<void> clearAll() async {
+    final removed = <StoreChange>[];
+    for (final entry in _boxes.entries) {
+      final ids = entry.value.keys.cast<String>().toList();
+      await entry.value.clear();
+      removed.addAll([for (final id in ids) StoreChange(entry.key, id, null)]);
+    }
+    removed.forEach(_changes.add);
   }
 
   /// Emite el contenido actual y lo re-emite en cada cambio de la caja.
