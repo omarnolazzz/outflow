@@ -41,6 +41,22 @@ class _UpcomingCarouselState extends State<UpcomingCarousel> {
   late final PageController _controller = PageController(viewportFraction: 0.78);
   int _page = 0;
 
+  /// Tarjetas que ya hicieron su entrada. El PageView construye las tarjetas
+  /// al deslizar; si cada una esperara su retraso escalonado, aparecerían
+  /// tarde y el carrusel parecería trabado.
+  final _entered = <int>{};
+
+  /// La entrada escalonada solo acompaña la primera aparición de Inicio.
+  bool _introOver = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(milliseconds: 900), () {
+      if (mounted) _introOver = true;
+    });
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -73,12 +89,17 @@ class _UpcomingCarouselState extends State<UpcomingCarousel> {
                 onTap: () => widget.onOpen(item),
               ),
             );
+            // Solo las tarjetas visibles al abrir Inicio entran escalonadas;
+            // las que aparecen al deslizar se muestran al instante (misma
+            // estructura, sin retraso ni recorrido).
+            final intro = !_introOver && i <= 2 && _entered.add(i);
             return Entrance(
-              index: i,
-              delay: const Duration(milliseconds: 260),
-              step: const Duration(milliseconds: 70),
-              offset: const Offset(48, 0),
-              child: _DepthOnScroll(controller: _controller, index: i, child: card),
+              index: intro ? i : 0,
+              delay: intro ? const Duration(milliseconds: 200) : Duration.zero,
+              step: const Duration(milliseconds: 60),
+              offset: intro ? const Offset(40, 0) : Offset.zero,
+              duration: intro ? const Duration(milliseconds: 420) : Duration.zero,
+              child: RepaintBoundary(child: _DepthOnScroll(controller: _controller, index: i, child: card)),
             );
           },
         ),
