@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:outflow/features/account/domain/account.dart';
 import 'package:outflow/features/account/domain/auth_service.dart';
 import 'package:outflow/features/account/presentation/session_controller.dart';
+import 'package:outflow/features/cloud/presentation/cloud_sync.dart';
 import 'package:outflow/features/notifications/domain/notification_rule.dart';
 import 'package:outflow/features/notifications/presentation/notification_providers.dart';
 import 'package:outflow/features/settings/presentation/settings_screen.dart';
@@ -43,13 +44,20 @@ class _Bio implements Biometrics {
   Future<String> label() async => 'Face ID';
 }
 
+class _StateCloud extends CloudSync {
+  _StateCloud(this.initial);
+  final CloudSyncState initial;
+  @override
+  CloudSyncState build() => initial;
+}
+
 void main() {
   late _Auth auth;
   late MemorySettings settings;
   late MemoryAccounts accounts;
   late MemoryMovements movements;
 
-  Future<void> pump(WidgetTester tester, {List<Movement> existing = const []}) async {
+  Future<void> pump(WidgetTester tester, {List<Movement> existing = const [], CloudSyncState cloud = CloudSyncState.idle}) async {
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
@@ -59,6 +67,7 @@ void main() {
     settings = MemorySettings(WalletSettings(onboardingDone: true, walletStartedAt: DateTime(2026, 10, 1)));
     await tester.pumpWidget(ProviderScope(
       overrides: [
+        cloudSyncProvider.overrideWith(() => _StateCloud(cloud)),
         authServiceProvider.overrideWithValue(auth),
         biometricsProvider.overrideWithValue(_Bio()),
         walletSettingsRepositoryProvider.overrideWithValue(settings),
@@ -90,6 +99,43 @@ void main() {
     expect(find.text('Captura por correo', skipOffstage: false), findsNothing);
     debugDefaultTargetPlatformOverride = null;
   });
+  const cloudLine = 'También se borra la copia guardada en la nube.';
+  const localFooter = 'Outflow · tus gastos se guardan cifrados en este teléfono';
+  const cloudFooter = 'Tu información se guarda con tu cuenta de Google';
+
+  Future<void> toFooter(WidgetTester tester) =>
+      tester.drag(find.byType(Scrollable).first, const Offset(0, -3000)).then((_) => tester.pumpAndSettle());
+
+  Future<void> openErase(WidgetTester tester) async {
+    await tester.scrollUntilVisible(find.text('Borrar toda la información'), 300, scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('Borrar toda la información'));
+    await tester.pumpAndSettle();
+  }
+
+  for (final s in [CloudSyncState.live, CloudSyncState.syncing]) {
+    testWidgets('con la nube en uso ($s), borrar avisa de la copia en la nube y el pie cambia', (tester) async {
+      await pump(tester, cloud: s);
+      await toFooter(tester);
+      expect(find.text(cloudFooter, skipOffstage: false), findsOneWidget);
+      expect(find.text(localFooter, skipOffstage: false), findsNothing);
+      await openErase(tester);
+      expect(find.textContaining(cloudLine), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final s in [CloudSyncState.idle, CloudSyncState.unavailable, CloudSyncState.needsChoice]) {
+    testWidgets('sin la nube en uso ($s), borrar no la menciona y el pie sigue local', (tester) async {
+      await pump(tester, cloud: s);
+      await toFooter(tester);
+      expect(find.text(localFooter, skipOffstage: false), findsOneWidget);
+      expect(find.text(cloudFooter, skipOffstage: false), findsNothing);
+      await openErase(tester);
+      expect(find.textContaining(cloudLine), findsNothing);
+      expect(find.textContaining('No se puede deshacer'), findsOneWidget);
+    });
+  }
+
   testWidgets('muestra la cuenta de Google', (tester) async {
     await pump(tester);
     expect(find.text('Gabriel Nolazco'), findsOneWidget);

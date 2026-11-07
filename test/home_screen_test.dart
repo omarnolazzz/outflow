@@ -6,6 +6,7 @@ import 'package:outflow/core/domain/billing_cycle.dart';
 import 'package:outflow/core/domain/money.dart';
 import 'package:outflow/features/account/domain/account.dart';
 import 'package:outflow/features/account/presentation/session_controller.dart';
+import 'package:outflow/features/cloud/presentation/cloud_sync.dart';
 import 'package:outflow/features/friends/domain/shared_expense.dart';
 import 'package:outflow/features/friends/presentation/friends_providers.dart';
 import 'package:outflow/features/home/presentation/home_screen.dart';
@@ -45,6 +46,13 @@ class _NoRepo implements SubscriptionRepository {
   dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }
 
+class _StateCloud extends CloudSync {
+  _StateCloud(this.initial);
+  final CloudSyncState initial;
+  @override
+  CloudSyncState build() => initial;
+}
+
 class RecordingActions extends SubscriptionActions {
   RecordingActions(super.repo);
   final calls = <String>[];
@@ -66,6 +74,7 @@ void main() {
     MemorySocial? social,
     List<WalletAccount>? accounts,
     bool phone = false,
+    CloudSyncState cloud = CloudSyncState.idle,
   }) async {
     if (phone) {
       tester.view.physicalSize = const Size(1080, 2400);
@@ -75,6 +84,7 @@ void main() {
     final actions = RecordingActions(_NoRepo());
     walletSettings = MemorySettings(WalletSettings(walletStartedAt: DateTime(2026, 10, 1)));
     final container = ProviderContainer(overrides: [
+      cloudSyncProvider.overrideWith(() => _StateCloud(cloud)),
       if (social != null) socialRepositoryProvider.overrideWithValue(social),
       if (accounts != null) ...[
         accountRepositoryProvider.overrideWithValue(MemoryAccounts(accounts)),
@@ -109,6 +119,17 @@ void main() {
     expect(find.text('Te queda este mes'), findsOneWidget);
     expect(find.textContaining('1,650'), findsWidgets);
     expect(find.text('Almuerzo'), findsOneWidget);
+  });
+
+  testWidgets('en unavailable Inicio muestra el aviso de la nube; en live no', (tester) async {
+    await pump(tester, phone: true, cloud: CloudSyncState.unavailable);
+    expect(find.text('Tu información aún no se está guardando en la nube'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('en live Inicio no muestra el aviso de la nube', (tester) async {
+    await pump(tester, phone: true, cloud: CloudSyncState.live);
+    expect(find.text('Tu información aún no se está guardando en la nube'), findsNothing);
   });
 
   testWidgets('sin ingresos muestra "Gastado este mes" y el atajo para registrar uno', (tester) async {

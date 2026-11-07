@@ -14,6 +14,7 @@ import '../../../core/widgets/status_pill.dart';
 import '../../../core/widgets/surface_card.dart';
 import '../../account/presentation/account_avatar.dart';
 import '../../account/presentation/session_controller.dart';
+import '../../cloud/presentation/cloud_sync.dart';
 import '../../notifications/domain/notification_rule.dart';
 import '../../notifications/presentation/notification_providers.dart';
 import '../../notifications/presentation/widgets/notification_rule_editor.dart';
@@ -150,15 +151,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await ref.read(sessionControllerProvider.notifier).signOut();
   }
 
+  /// La wallet está en la nube de la cuenta (o pasando a ella). En la vista
+  /// previa y sin conexión sigue siendo solo local.
+  bool get _cloudInUse {
+    final s = ref.read(cloudSyncStateProvider);
+    return s == CloudSyncState.live || s == CloudSyncState.syncing;
+  }
+
   Future<void> _eraseEverything() async {
+    final inCloud = _cloudInUse;
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('¿Borrar toda la información?'),
-        content: const Text(
+        content: Text(
           'Se borran tus gastos, ingresos, suscripciones, categorías propias y ajustes de este teléfono, '
           'y tus amistades y los gastos compartidos que creaste. Volverás a la configuración inicial con '
-          'tu misma cuenta de Google.\n\nNo se puede deshacer.',
+          'tu misma cuenta de Google.'
+          '${inCloud ? '\n\nTambién se borra la copia guardada en la nube.' : ''}'
+          '\n\nNo se puede deshacer.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
@@ -187,6 +198,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final rule = ref.watch(globalRuleProvider).value ?? NotificationRule.defaults;
     final session = ref.read(sessionControllerProvider.notifier);
     final bioLabel = session.biometricsLabel;
+    final cloudState = ref.watch(cloudSyncStateProvider);
+    final cloudInUse = cloudState == CloudSyncState.live || cloudState == CloudSyncState.syncing;
 
     var order = 0;
     Widget e(Widget child) => Entrance(index: order++, child: child);
@@ -336,7 +349,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 8),
           e(Center(
             child: Text(
-              'Outflow · tus gastos se guardan cifrados en este teléfono',
+              cloudInUse
+                  ? 'Tu información se guarda con tu cuenta de Google'
+                  : 'Outflow · tus gastos se guardan cifrados en este teléfono',
+              textAlign: TextAlign.center,
               style: AppType.caption.copyWith(color: AppColors.inkTertiary),
             ),
           )),

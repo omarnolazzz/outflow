@@ -17,6 +17,7 @@ import 'features/account/presentation/session_controller.dart';
 import 'features/account/presentation/welcome_screen.dart';
 import 'features/capture/presentation/capture_link_handler.dart';
 import 'features/capture/presentation/capture_providers.dart';
+import 'features/cloud/presentation/cloud_choice_sheet.dart';
 import 'features/cloud/presentation/cloud_sync.dart';
 import 'features/notifications/data/charge_answer_inbox.dart';
 import 'features/merchants/presentation/screens/catalog_screen.dart';
@@ -318,7 +319,9 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
         },
         onQuickAdd: _quickAdd,
       ),
-      builder: (context, child) => Stack(
+      builder: (context, child) => CloudChoiceTrigger(
+        navigator: _navigator,
+        child: Stack(
         children: [
           // El contenido queda inerte e invisible para lectores de pantalla mientras está bloqueado.
           ExcludeSemantics(
@@ -332,6 +335,7 @@ class _OutflowAppState extends ConsumerState<OutflowApp> {
           _LockLayer(session: session),
           if (_obscured && !locked) const _PrivacyCover(),
         ],
+        ),
       ),
     );
   }

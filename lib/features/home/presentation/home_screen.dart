@@ -15,6 +15,8 @@ import '../../account/presentation/account_avatar.dart';
 import '../../account/presentation/session_controller.dart';
 import '../../capture/presentation/capture_providers.dart';
 import '../../capture/presentation/review_card.dart';
+import '../../cloud/presentation/cloud_banner.dart';
+import '../../cloud/presentation/cloud_sync.dart';
 import '../../friends/presentation/debts_card.dart';
 import '../../friends/presentation/friends_providers.dart';
 import '../../friends/presentation/split_match_card.dart';
@@ -129,6 +131,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         summary: month,
                         onAddIncome: () => shell?.quickAdd(QuickAction.income),
                       ),
+                    ),
+                  ),
+                // Solo ocupa sitio si la nube no está guardando la wallet.
+                if (ref.watch(cloudSyncStateProvider) == CloudSyncState.unavailable)
+                  e(
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: CloudBanner(),
                     ),
                   ),
                 // Lo que hay en tus cuentas, debajo de lo que te queda este mes.

@@ -5,6 +5,7 @@ import 'package:outflow/core/di/core_providers.dart';
 import 'package:outflow/core/domain/money.dart';
 import 'package:outflow/features/account/domain/account.dart';
 import 'package:outflow/features/account/presentation/session_controller.dart';
+import 'package:outflow/features/cloud/presentation/cloud_sync.dart';
 import 'package:outflow/features/friends/domain/shared_expense.dart';
 import 'package:outflow/features/friends/domain/split_movements.dart';
 import 'package:outflow/features/friends/presentation/friends_providers.dart';
@@ -78,6 +79,7 @@ void main() {
       key: UniqueKey(),
       overrides: [
         nowProvider.overrideWithValue(now),
+        cloudSyncStateProvider.overrideWithValue(CloudSyncState.idle),
         socialRepositoryProvider.overrideWithValue(social),
         movementRepositoryProvider.overrideWithValue(movements),
         walletSettingsRepositoryProvider.overrideWithValue(settings),
