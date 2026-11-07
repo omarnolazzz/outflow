@@ -256,12 +256,15 @@ class SessionController extends Notifier<SessionState> {
   /// el teléfono (gastos, suscripciones, categorías propias, cuentas, ajustes),
   /// borra lo compartido que es tuyo en la nube y vuelve a la configuración
   /// inicial con la misma cuenta de Google y solo "Mi cuenta".
-  Future<void> eraseEverything() async {
+  ///
+  /// [cloudShown] es lo que el diálogo dijo sobre la nube; si ya no coincide
+  /// no se borra nada y devuelve falso (hay que volver a preguntar).
+  Future<bool> eraseEverything({bool? cloudShown}) async {
     final account = switch (state) {
       Ready(:final account) || Locked(:final account) || NeedsOnboarding(:final account) => account,
       _ => null,
     };
-    if (account == null) return;
+    if (account == null) return true;
     // Antes de vaciar nada: una pasada de captura en curso leyó la wallet vieja
     // y no puede escribirla en la nueva.
     _erasing = true;
@@ -271,16 +274,19 @@ class SessionController extends Notifier<SessionState> {
     final cloud = ref.read(cloudEraseHooksProvider);
     final at = DateTime.now();
     var completed = false;
+    var proceed = true;
     try {
-      await cloud.begin(at);
+      proceed = await cloud.begin(at, expectCloud: cloudShown);
+      if (!proceed) return false;
       await _erase(account);
       completed = true;
     } finally {
       _walletGeneration++;
       _erasing = false;
-      cloud.end(at, completed: completed);
+      if (proceed) cloud.end(at, completed: completed);
     }
     state = NeedsOnboarding(account, short: false);
+    return true;
   }
 
   Future<void> _erase(Account account) async {

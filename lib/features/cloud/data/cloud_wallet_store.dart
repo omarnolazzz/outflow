@@ -50,6 +50,9 @@ abstract interface class CloudWalletStore {
 
   /// Borra todas las colecciones y escribe `resetAt`.
   Future<void> wipe(DateTime at);
+
+  /// caja -> ids de los documentos del servidor que firmó [writer].
+  Future<Map<String, Set<String>>> idsWrittenBy(String writer);
 }
 
 const _batchSize = 400;
@@ -231,6 +234,24 @@ class FirestoreCloudWalletStore implements CloudWalletStore {
   }
 
   @override
+  Future<Map<String, Set<String>>> idsWrittenBy(String writer) async {
+    final out = <String, Set<String>>{};
+    try {
+      for (final box in _allBoxes) {
+        final snap = await _col(box).get(_server);
+        if (snap.metadata.isFromCache) throw const CloudUnavailable(permissionDenied: false);
+        out[box] = {
+          for (final d in snap.docs)
+            if (d.data()['writer'] == writer && isSynced(box, d.id)) d.id,
+        };
+      }
+    } on FirebaseException catch (e) {
+      _unavailable(e);
+    }
+    return out;
+  }
+
+  @override
   Future<void> wipe(DateTime at) async {
     try {
       for (final box in _allBoxes) {
@@ -245,7 +266,7 @@ class FirestoreCloudWalletStore implements CloudWalletStore {
           await batch.commit();
         }
       }
-      await _root.set({'resetAt': at.toIso8601String()});
+      await _root.set({'resetAt': at.toUtc().toIso8601String()});
     } on FirebaseException catch (e) {
       _unavailable(e);
     }

@@ -83,6 +83,12 @@ class _Spy implements CloudWalletStore {
   /// `resetAt` espera a que se complete.
   Completer<void>? resetGate;
 
+  /// `resetAt` falla como sin red.
+  bool resetOffline = false;
+
+  /// `uploadAll` llega al servidor pero la confirmación se pierde (no termina).
+  bool hangAfterUpload = false;
+
   /// Con [manual], `watch` devuelve estos controladores en vez de Firestore.
   bool manual = false;
   final watchers = <String, StreamController<CloudSnapshot>>{};
@@ -120,7 +126,11 @@ class _Spy implements CloudWalletStore {
         await uploadGate?.future;
         uploads.add(docs);
         await inner.uploadAll(docs);
+        if (hangAfterUpload) await Completer<void>().future;
       });
+
+  @override
+  Future<Map<String, Set<String>>> idsWrittenBy(String writer) => _guard(() => inner.idsWrittenBy(writer));
 
   @override
   Stream<CloudSnapshot> watch(String box) {
@@ -132,6 +142,7 @@ class _Spy implements CloudWalletStore {
 
   @override
   Future<DateTime?> resetAt() => _guard(() async {
+        if (resetOffline) throw const CloudUnavailable(permissionDenied: false);
         await resetGate?.future;
         return inner.resetAt();
       });
@@ -904,6 +915,72 @@ void main() {
       await _until(() => stateOf(c) == CloudSyncState.live);
       await _until(() => c.read(sessionControllerProvider) is! NeedsOnboarding && c.read(sessionControllerProvider) is! SessionLoading);
       expect(c.read(sessionControllerProvider), isA<Ready>());
+    });
+  });
+
+  group('subida interrumpida y otros detalles', () {
+    test('I1: tras una primera subida cortada, lo editado y borrado después gana y no se pregunta', () async {
+      await owner('u1');
+      await store.write(LocalStore.movementsBox, 'm1', _mov('m1', 1000).toJson());
+      await store.write(LocalStore.movementsBox, 'm2', _mov('m2', 2000).toJson());
+      spyFor('u1').hangAfterUpload = true;
+      final c = open(gabriel, timeout: const Duration(milliseconds: 300));
+      await _until(() => stateOf(c) == CloudSyncState.unavailable, reason: 'unavailable');
+      expect(secure.values.keys.where((k) => k.startsWith('outflow.cloud.migrated')), isEmpty);
+      expect((await cloudOf('u1').readAll())[LocalStore.movementsBox]!.keys.toSet(), {'m1', 'm2'});
+
+      await store.write(LocalStore.movementsBox, 'm1', _mov('m1', 1111).toJson());
+      await store.remove(LocalStore.movementsBox, 'm2');
+      spyFor('u1').hangAfterUpload = false;
+
+      final seen = <CloudSyncState>[];
+      c.listen(cloudSyncStateProvider, (_, n) => seen.add(n));
+      await c.read(cloudSyncProvider.notifier).retry();
+      await _until(() => stateOf(c) == CloudSyncState.live, reason: 'live');
+      expect(seen, isNot(contains(CloudSyncState.needsChoice)));
+      final cloud = (await cloudOf('u1').readAll())[LocalStore.movementsBox]!;
+      expect(cloud.keys.toSet(), {'m1'});
+      expect((cloud['m1']!['amount'] as Map)['minor'], 1111);
+      expect(_box(store, LocalStore.movementsBox).keys.toSet(), {'m1'});
+      expect(secure.values['outflow.cloud.migrated.u1'], isNotNull);
+      expect(secure.values.keys.where((k) => k.startsWith('outflow.cloud.uploading')), isEmpty);
+    });
+
+    test('M1: las fechas guardadas van en UTC', () async {
+      await migrated('u1');
+      expect(secure.values['outflow.cloud.loadedAt.u1'], endsWith('Z'));
+    });
+
+    test('M5: un teléfono ya migrado que abre sin red entra en vivo', () async {
+      final c = await migrated('u1');
+      c.dispose();
+      spyFor('u1').resetOffline = true;
+      final c2 = open(gabriel);
+      await _until(() => stateOf(c2) == CloudSyncState.live, reason: 'live sin red');
+    });
+
+    test('M7: borrar los ajustes en la nube conserva lo del dispositivo', () async {
+      final c = await migrated('u1');
+      await store.write(LocalStore.settingsBox, 'wallet.settings',
+          const WalletSettings(ownerUid: 'u1', faceIdEnabled: true, onboardingDone: true).toJson());
+      await pumpEventQueue();
+      await cloudOf('u1').delete(LocalStore.settingsBox, 'wallet.settings');
+      await pumpEventQueue(times: 200);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      final settings = store.read(LocalStore.settingsBox, 'wallet.settings');
+      expect(settings, isNotNull);
+      expect(settings!['ownerUid'], 'u1');
+      expect(settings['faceIdEnabled'], isTrue);
+      expect(stateOf(c), CloudSyncState.live);
+    });
+
+    test('M2: si la nube no coincide con lo mostrado, no se borra nada', () async {
+      final c = await migrated('u1');
+      final n = c.read(cloudSyncProvider.notifier);
+      expect(await n.willEraseCloud(), isTrue);
+      expect(await n.beginErase(DateTime.now(), false), isFalse);
+      expect(spyFor('u1').wipes, 0);
+      expect(stateOf(c), CloudSyncState.live);
     });
   });
 }

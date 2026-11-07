@@ -152,9 +152,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _eraseEverything() async {
+    // Si la nube cambia entre el diálogo y el borrado, se vuelve a preguntar.
+    while (mounted) {
+      if (await _askAndErase()) return;
+    }
+  }
+
+  /// Falso si hay que volver a preguntar; verdadero si se borró o se canceló.
+  Future<bool> _askAndErase() async {
     // Solo si el borrado va a vaciar la nube (la wallet ya migró), no por el estado.
     final inCloud = await ref.read(cloudSyncProvider.notifier).willEraseCloud();
-    if (!mounted) return;
+    if (!mounted) return true;
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -175,10 +183,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ],
       ),
     );
-    if (ok != true || !mounted) return;
+    if (ok != true || !mounted) return true;
     HapticFeedback.heavyImpact();
-    Navigator.of(context).popUntil((r) => r.isFirst);
-    await ref.read(sessionControllerProvider.notifier).eraseEverything();
+    final navigator = Navigator.of(context);
+    final erased = await ref.read(sessionControllerProvider.notifier).eraseEverything(cloudShown: inCloud);
+    if (erased) navigator.popUntil((r) => r.isFirst);
+    return erased;
   }
 
   Future<void> _saveRule(NotificationRule previous, NotificationRule rule) async {

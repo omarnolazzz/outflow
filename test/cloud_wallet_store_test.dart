@@ -137,7 +137,7 @@ void main() {
     expect(last!.isAfter(before), isTrue);
     final later = DateTime.now().add(const Duration(days: 1));
     await store.wipe(later);
-    expect(await store.lastChangeAt(), later);
+    expect((await store.lastChangeAt())!.toUtc(), later.toUtc());
   });
 
   test('cada documento lleva la instalación que lo escribió y lastChangeAt ignora las propias', () async {
