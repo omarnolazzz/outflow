@@ -130,7 +130,7 @@ class _Spy implements CloudWalletStore {
       });
 
   @override
-  Future<Map<String, Set<String>>> idsWrittenBy(String writer) => _guard(() => inner.idsWrittenBy(writer));
+  Future<({Map<String, Set<String>> mine, bool foreign})> writtenBy(String writer) => _guard(() => inner.writtenBy(writer));
 
   @override
   Stream<CloudSnapshot> watch(String box) {
@@ -211,6 +211,7 @@ void main() {
         secureStorageProvider.overrideWithValue(secure),
         cloudBackupDirProvider.overrideWithValue(() async => docs),
         cloudTimeoutProvider.overrideWithValue(timeout),
+        cloudRecheckProvider.overrideWithValue(const Duration(milliseconds: 80)),
         cloudWalletStoreProvider.overrideWith((ref) {
           final uid = ref.watch(currentAccountProvider.select((a) => a?.uid));
           return uid == null ? null : spyFor(uid);
@@ -946,17 +947,62 @@ void main() {
       expect(secure.values.keys.where((k) => k.startsWith('outflow.cloud.uploading')), isEmpty);
     });
 
+    test('N1: si otro dispositivo tocó la nube tras la subida cortada, no se pisa y se pregunta', () async {
+      await owner('u1');
+      await store.write(LocalStore.movementsBox, 'm1', _mov('m1', 1000).toJson());
+      await store.write(LocalStore.movementsBox, 'm2', _mov('m2', 2000).toJson());
+      spyFor('u1').hangAfterUpload = true;
+      final c = open(gabriel, timeout: const Duration(milliseconds: 300));
+      await _until(() => stateOf(c) == CloudSyncState.unavailable, reason: 'unavailable');
+
+      // Otro dispositivo edita un documento de la nube.
+      await cloudOf('u1').put(LocalStore.movementsBox, 'm1', _mov('m1', 7777).toJson());
+      await store.write(LocalStore.movementsBox, 'm3', _mov('m3', 30).toJson());
+      spyFor('u1').hangAfterUpload = false;
+      await c.read(cloudSyncProvider.notifier).retry();
+      await _until(() => stateOf(c) == CloudSyncState.needsChoice, reason: 'pregunta');
+      final cloud = (await cloudOf('u1').readAll())[LocalStore.movementsBox]!;
+      expect((cloud['m1']!['amount'] as Map)['minor'], 7777, reason: 'lo del otro dispositivo sobrevive');
+      expect(secure.values.keys.where((k) => k.startsWith('outflow.cloud.uploading')), isEmpty);
+    });
+
+    group('M5/N2: abrir sin red un teléfono ya migrado', () {
+      Future<ProviderContainer> offlineWithDirty() async {
+        final c = await migrated('u1');
+        c.dispose();
+        await store.write(LocalStore.movementsBox, 'm9', _mov('m9', 9).toJson());
+        await store.markDirty(LocalStore.movementsBox, 'm9', deleted: false, seq: 1);
+        spyFor('u1').resetOffline = true;
+        spyFor('u1').puts.clear();
+        final c2 = open(gabriel);
+        await _until(() => stateOf(c2) == CloudSyncState.live, reason: 'live sin red');
+        return c2;
+      }
+
+      test('no envía nada hasta comprobar resetAt; sin reinicio lo pendiente sale', () async {
+        await offlineWithDirty();
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        expect(spyFor('u1').puts, isEmpty);
+        expect(store.dirtyKeys(), isNotEmpty);
+        spyFor('u1').resetOffline = false;
+        await _until(() => spyFor('u1').puts.contains('movements/m9'), reason: 'se envía al volver la red');
+      });
+
+      test('si mientras tanto otro dispositivo borró todo, lo pendiente se descarta', () async {
+        await offlineWithDirty();
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        await cloudOf('u1').wipe(DateTime.now().add(const Duration(hours: 1)));
+        spyFor('u1').resetOffline = false;
+        await _until(() => store.dirtyKeys().isEmpty, reason: 'pendiente descartado');
+        await pumpEventQueue();
+        expect(spyFor('u1').puts, isEmpty);
+        expect(_box(store, LocalStore.movementsBox).containsKey('m9'), isFalse);
+      });
+    });
+
     test('M1: las fechas guardadas van en UTC', () async {
       await migrated('u1');
       expect(secure.values['outflow.cloud.loadedAt.u1'], endsWith('Z'));
-    });
-
-    test('M5: un teléfono ya migrado que abre sin red entra en vivo', () async {
-      final c = await migrated('u1');
-      c.dispose();
-      spyFor('u1').resetOffline = true;
-      final c2 = open(gabriel);
-      await _until(() => stateOf(c2) == CloudSyncState.live, reason: 'live sin red');
     });
 
     test('M7: borrar los ajustes en la nube conserva lo del dispositivo', () async {

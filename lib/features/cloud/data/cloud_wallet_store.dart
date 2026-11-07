@@ -51,8 +51,9 @@ abstract interface class CloudWalletStore {
   /// Borra todas las colecciones y escribe `resetAt`.
   Future<void> wipe(DateTime at);
 
-  /// caja -> ids de los documentos del servidor que firmó [writer].
-  Future<Map<String, Set<String>>> idsWrittenBy(String writer);
+  /// Los documentos del servidor que firmó [writer] (caja -> ids) y si hay
+  /// alguno de otra instalación o sin firma (`foreign`).
+  Future<({Map<String, Set<String>> mine, bool foreign})> writtenBy(String writer);
 }
 
 const _batchSize = 400;
@@ -234,21 +235,28 @@ class FirestoreCloudWalletStore implements CloudWalletStore {
   }
 
   @override
-  Future<Map<String, Set<String>>> idsWrittenBy(String writer) async {
-    final out = <String, Set<String>>{};
+  Future<({Map<String, Set<String>> mine, bool foreign})> writtenBy(String writer) async {
+    final mine = <String, Set<String>>{};
+    var foreign = false;
     try {
       for (final box in _allBoxes) {
         final snap = await _col(box).get(_server);
         if (snap.metadata.isFromCache) throw const CloudUnavailable(permissionDenied: false);
-        out[box] = {
-          for (final d in snap.docs)
-            if (d.data()['writer'] == writer && isSynced(box, d.id)) d.id,
-        };
+        final ids = <String>{};
+        for (final d in snap.docs) {
+          if (!isSynced(box, d.id)) continue;
+          if (d.data()['writer'] == writer) {
+            ids.add(d.id);
+          } else {
+            foreign = true;
+          }
+        }
+        mine[box] = ids;
       }
     } on FirebaseException catch (e) {
       _unavailable(e);
     }
-    return out;
+    return (mine: mine, foreign: foreign);
   }
 
   @override

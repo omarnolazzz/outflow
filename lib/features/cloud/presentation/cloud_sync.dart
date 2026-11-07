@@ -41,6 +41,9 @@ final cloudBackupDirProvider = Provider<Future<Directory> Function()>((ref) => g
 /// Lo que se espera al servidor en `readAll`, `uploadAll`, `resetAt` y `wipe`.
 final cloudTimeoutProvider = Provider<Duration>((ref) => const Duration(seconds: 30));
 
+/// Cada cuánto se repite la comprobación de `resetAt` si al abrir no había red.
+final cloudRecheckProvider = Provider<Duration>((ref) => const Duration(seconds: 45));
+
 /// Tras descargar una wallet completa: si ya estaba configurada (reinstalar),
 /// la sesión no repite la configuración inicial.
 final walletDownloadedProvider = Provider<void Function()>((ref) => () {
@@ -103,6 +106,7 @@ class _Run {
     required this.store,
     required this.secure,
     required this.timeout,
+    required this.recheckEvery,
     required this.backupDir,
   });
 
@@ -111,7 +115,14 @@ class _Run {
   final LocalStore store;
   final FlutterSecureStorage secure;
   final Duration timeout;
+  final Duration recheckEvery;
   final Future<Directory> Function() backupDir;
+
+  /// Entró sin red y aún no se pudo comprobar `resetAt`: se escucha pero no se
+  /// envía nada (lo pendiente sigue en Hive) hasta comprobarlo.
+  bool held = false;
+  Timer? recheck;
+  bool rechecking = false;
 
   bool alive = true;
 
@@ -180,6 +191,7 @@ class CloudSync extends Notifier<CloudSyncState> {
       store: ref.read(localStoreProvider),
       secure: ref.read(secureStorageProvider),
       timeout: ref.read(cloudTimeoutProvider),
+      recheckEvery: ref.read(cloudRecheckProvider),
       backupDir: ref.read(cloudBackupDirProvider),
     );
     _run = run;
@@ -238,7 +250,7 @@ class CloudSync extends Notifier<CloudSyncState> {
   Future<bool> willEraseCloud() async {
     final run = _run;
     if (run == null) return false;
-    return _isMigrated(run, run.uid);
+    return _isMigratedSafe(run, run.uid);
   }
 
   /// Reintenta tras [CloudSyncState.unavailable] (aviso tocado o al volver).
@@ -257,9 +269,13 @@ class CloudSync extends Notifier<CloudSyncState> {
       case CloudSyncState.unavailable:
         await retry();
       case CloudSyncState.live:
+        if (run.held) {
+          await _recheckReset(run);
+          return;
+        }
         await _op(run, (epoch) async {
           try {
-            if (await _checkReset(run, epoch)) {
+            if (await _checkReset(run, epoch) == true) {
               _goLive(run);
               return;
             }
@@ -401,17 +417,18 @@ class CloudSync extends Notifier<CloudSyncState> {
       // como pendiente y solo se envía tras comprobar que nadie borró todo.
       // Sin red entra en vivo igual (las escrituras se encolan) y la comprobación
       // se repite al volver a primer plano; un permiso denegado sí se avisa.
-      await _checkReset(run, epoch, tolerateOffline: true);
-      _goLive(run);
+      if (await _checkReset(run, epoch, tolerateOffline: true) == null) {
+        _hold(run);
+      } else {
+        _goLive(run);
+      }
       return;
     }
     _guard(run, epoch);
 
-    if (await _uploadInterrupted(run)) {
-      _guard(run, epoch);
-      await _resumeUpload(run, epoch);
-      return;
-    }
+    final markedAt = await _uploadInterrupted(run);
+    _guard(run, epoch);
+    if (markedAt != null && await _resumeUpload(run, epoch, markedAt)) return;
     _guard(run, epoch);
 
     final cloud = await _net(run, epoch, run.cloud.readAll());
@@ -439,7 +456,10 @@ class CloudSync extends Notifier<CloudSyncState> {
         // Lo editado mientras sube queda pendiente y se envía al terminar.
         await run.store.clearAllDirty();
         // Si la subida se corta, al reintentar se sigue con lo local (no se pregunta).
-        await run.secure.write(key: _uploadingKey(uid), value: await _installToken(run));
+        await run.secure.write(
+          key: _uploadingKey(uid),
+          value: jsonEncode({'token': await _installToken(run), 'at': DateTime.now().toUtc().toIso8601String()}),
+        );
         await _net(run, epoch, run.cloud.uploadAll(_toCloudAll(local)));
         await _markMigrated(run, epoch, reset);
         _goLive(run);
@@ -458,24 +478,39 @@ class CloudSync extends Notifier<CloudSyncState> {
     }
   }
 
-  /// Esta instalación empezó la primera subida y no llegó a confirmarla.
-  Future<bool> _uploadInterrupted(_Run run) async {
-    final mark = await run.secure.read(key: _uploadingKey(run.uid));
-    if (mark == null) return false;
-    if (mark == await _installToken(run)) return true;
+  /// Cuándo esta instalación empezó la primera subida que no llegó a confirmar
+  /// (null si no hay ninguna).
+  Future<DateTime?> _uploadInterrupted(_Run run) async {
+    final raw = await run.secure.read(key: _uploadingKey(run.uid));
+    if (raw == null) return null;
+    try {
+      final json = jsonDecode(raw) as Map;
+      final at = DateTime.tryParse(json['at'] as String? ?? '');
+      if (at != null && json['token'] == await _installToken(run)) return at;
+    } catch (_) {
+      // Formato desconocido: se olvida.
+    }
     // De otra instalación (el llavero del iPhone sobrevive a reinstalar): se olvida.
     await run.secure.delete(key: _uploadingKey(run.uid));
-    return false;
+    return null;
   }
 
-  /// Sigue la subida cortada con lo local por encima: se sube todo lo de este
-  /// teléfono y se borra de la nube lo que esta instalación subió y ya no existe aquí.
-  Future<void> _resumeUpload(_Run run, int epoch) async {
+  /// Sigue la subida cortada con lo local por encima, pero solo si nadie más
+  /// tocó la nube desde entonces (ni documentos de otra instalación ni un
+  /// borrado total): entonces se sube todo lo de este teléfono y se borra de la
+  /// nube lo que esta instalación subió y ya no existe aquí. Si no, devuelve
+  /// falso y sigue la decisión normal, que no pierde nada.
+  Future<bool> _resumeUpload(_Run run, int epoch, DateTime markedAt) async {
     final reset = await _net(run, epoch, run.cloud.resetAt());
-    final mine = await _net(run, epoch, run.cloud.idsWrittenBy(await _installToken(run)));
+    final seen = await _net(run, epoch, run.cloud.writtenBy(await _installToken(run)));
+    if (seen.foreign || (reset != null && reset.isAfter(markedAt))) {
+      await run.secure.delete(key: _uploadingKey(run.uid));
+      _guard(run, epoch);
+      return false;
+    }
     final local = _snapshot(run);
     await run.store.clearAllDirty();
-    for (final e in mine.entries) {
+    for (final e in seen.mine.entries) {
       for (final id in e.value) {
         if (local[e.key]?[id] == null) await _net(run, epoch, run.cloud.delete(e.key, id));
       }
@@ -483,6 +518,30 @@ class CloudSync extends Notifier<CloudSyncState> {
     await _net(run, epoch, run.cloud.uploadAll(_toCloudAll(local)));
     await _markMigrated(run, epoch, reset);
     _goLive(run);
+    return true;
+  }
+
+  /// Sin red al abrir: se escucha, pero nada se envía hasta comprobar `resetAt`.
+  void _hold(_Run run) {
+    run.held = true;
+    run.forwarding = false;
+    _startWatches(run);
+    _set(run, CloudSyncState.live);
+    run.recheck?.cancel();
+    run.recheck = Timer.periodic(run.recheckEvery, (_) => _recheckReset(run).ignore());
+  }
+
+  Future<void> _recheckReset(_Run run) async {
+    if (!run.alive || !run.held || run.rechecking) return;
+    run.rechecking = true;
+    try {
+      await _op(run, (epoch) async {
+        if (await _checkReset(run, epoch, tolerateOffline: true) == null) return;
+        _goLive(run);
+      });
+    } finally {
+      run.rechecking = false;
+    }
   }
 
   /// Otra cuenta en el teléfono: su wallet nunca se sube ni se muestra. Si no
@@ -503,17 +562,17 @@ class CloudSync extends Notifier<CloudSyncState> {
   }
 
   /// `resetAt` más nuevo que la última carga: otro dispositivo borró todo. Lo
-  /// local se reemplaza por la nube sin enviar nada. Devuelve si hubo reinicio.
-  Future<bool> _checkReset(_Run run, int epoch, {bool tolerateOffline = false}) async {
+  /// local se reemplaza por la nube sin enviar nada. Devuelve si hubo reinicio (null: sin red, no se pudo comprobar).
+  Future<bool?> _checkReset(_Run run, int epoch, {bool tolerateOffline = false}) async {
     final DateTime? reset;
     try {
       reset = await _net(run, epoch, run.cloud.resetAt());
     } on CloudUnavailable catch (e) {
       if (!tolerateOffline || e.permissionDenied) rethrow;
-      return false;
+      return null;
     } on TimeoutException {
       if (!tolerateOffline) rethrow;
-      return false;
+      return null;
     }
     if (reset == null) return false;
     final loaded = await _readDate(run, _loadedAtKey(run.uid));
@@ -577,6 +636,9 @@ class CloudSync extends Notifier<CloudSyncState> {
   }
 
   void _goLive(_Run run) {
+    run.held = false;
+    run.recheck?.cancel();
+    run.recheck = null;
     run.forwarding = true;
     // Antes de escuchar: lo pendiente sale primero y lo remoto no lo pisa.
     _flushDirty(run);
@@ -753,6 +815,9 @@ class CloudSync extends Notifier<CloudSyncState> {
 
   void _unavailable(_Run run, {required bool permissionDenied}) {
     if (!run.alive) return;
+    run.held = false;
+    run.recheck?.cancel();
+    run.recheck = null;
     _stopWatches(run);
     if (permissionDenied) run.forwarding = false;
     _set(run, CloudSyncState.unavailable);
@@ -764,6 +829,7 @@ class CloudSync extends Notifier<CloudSyncState> {
 
   void _dispose(_Run run) {
     run.alive = false;
+    run.recheck?.cancel();
     if (identical(run.store.beforeChange, run.hook)) run.store.beforeChange = null;
     run.local?.cancel();
     _stopWatches(run);
