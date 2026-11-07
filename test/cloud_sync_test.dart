@@ -130,6 +130,12 @@ class _Spy implements CloudWalletStore {
       });
 
   @override
+  Future<void> markMigratedBy(String token) => _guard(() => inner.markMigratedBy(token));
+
+  @override
+  Future<Set<String>> migratedBy() => _guard(inner.migratedBy);
+
+  @override
   Future<({Map<String, Set<String>> mine, bool foreign})> writtenBy(String writer) => _guard(() => inner.writtenBy(writer));
 
   @override
@@ -964,6 +970,29 @@ void main() {
       final cloud = (await cloudOf('u1').readAll())[LocalStore.movementsBox]!;
       expect((cloud['m1']!['amount'] as Map)['minor'], 7777, reason: 'lo del otro dispositivo sobrevive');
       expect(secure.values.keys.where((k) => k.startsWith('outflow.cloud.uploading')), isEmpty);
+    });
+
+    test('N1: otra instalación que migró y solo borró un documento tampoco se pisa', () async {
+      await owner('u1');
+      await store.write(LocalStore.movementsBox, 'm1', _mov('m1', 1000).toJson());
+      await store.write(LocalStore.movementsBox, 'm2', _mov('m2', 2000).toJson());
+      spyFor('u1').hangAfterUpload = true;
+      final c = open(gabriel, timeout: const Duration(milliseconds: 300));
+      await _until(() => stateOf(c) == CloudSyncState.unavailable, reason: 'unavailable');
+
+      final other = cloudOf('u1');
+      await other.markMigratedBy('otro-dispositivo');
+      await other.delete(LocalStore.movementsBox, 'm2');
+      spyFor('u1').hangAfterUpload = false;
+      await c.read(cloudSyncProvider.notifier).retry();
+      await _until(() => stateOf(c) == CloudSyncState.needsChoice, reason: 'pregunta');
+      final cloud = (await other.readAll())[LocalStore.movementsBox]!;
+      expect(cloud.keys.toSet(), {'m1'}, reason: 'el borrado ajeno no se deshace');
+    });
+
+    test('al migrar, la instalación queda anotada en la raíz de la nube', () async {
+      await migrated('u1');
+      expect(await cloudOf('u1').migratedBy(), {store.installToken()});
     });
 
     group('M5/N2: abrir sin red un teléfono ya migrado', () {

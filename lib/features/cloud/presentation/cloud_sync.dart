@@ -307,6 +307,9 @@ class CloudSync extends Notifier<CloudSyncState> {
     run.paused = true;
     run.forwarding = false;
     _stopWatches(run);
+    run.held = false;
+    run.recheck?.cancel();
+    run.recheck = null;
     run.erasingMigrated = migrated;
     if (!run.erasingMigrated) return true;
     try {
@@ -502,8 +505,11 @@ class CloudSync extends Notifier<CloudSyncState> {
   /// falso y sigue la decisión normal, que no pierde nada.
   Future<bool> _resumeUpload(_Run run, int epoch, DateTime markedAt) async {
     final reset = await _net(run, epoch, run.cloud.resetAt());
-    final seen = await _net(run, epoch, run.cloud.writtenBy(await _installToken(run)));
-    if (seen.foreign || (reset != null && reset.isAfter(markedAt))) {
+    final token = await _installToken(run);
+    final seen = await _net(run, epoch, run.cloud.writtenBy(token));
+    // Otra instalación que ya migró pudo borrar documentos sin dejar rastro.
+    final others = (await _net(run, epoch, run.cloud.migratedBy())).any((t) => t != token);
+    if (seen.foreign || others || (reset != null && reset.isAfter(markedAt))) {
       await run.secure.delete(key: _uploadingKey(run.uid));
       _guard(run, epoch);
       return false;
@@ -532,7 +538,7 @@ class CloudSync extends Notifier<CloudSyncState> {
   }
 
   Future<void> _recheckReset(_Run run) async {
-    if (!run.alive || !run.held || run.rechecking) return;
+    if (!run.alive || !run.held || run.paused || run.rechecking) return;
     run.rechecking = true;
     try {
       await _op(run, (epoch) async {
@@ -924,6 +930,12 @@ class CloudSync extends Notifier<CloudSyncState> {
     _guard(run, epoch);
     await run.secure.write(key: _migratedKey(run.uid), value: await _installToken(run));
     await run.secure.delete(key: _uploadingKey(run.uid));
+    try {
+      await run.cloud.markMigratedBy(await _installToken(run)).timeout(run.timeout);
+    } catch (e) {
+      debugPrint('No se pudo anotar la migración en la nube: ${e.runtimeType}');
+    }
+    _guard(run, epoch);
     await _stampLoaded(run, reset);
     if (run.restoredBackup) {
       run.restoredBackup = false;

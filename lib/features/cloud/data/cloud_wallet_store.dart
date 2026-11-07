@@ -51,6 +51,13 @@ abstract interface class CloudWalletStore {
   /// Borra todas las colecciones y escribe `resetAt`.
   Future<void> wipe(DateTime at);
 
+  /// Anota [token] (el id de una instalación) entre las que ya migraron esta
+  /// wallet, en el documento raíz. Un `wipe` reinicia la lista.
+  Future<void> markMigratedBy(String token);
+
+  /// Las instalaciones que anotaron su migración.
+  Future<Set<String>> migratedBy();
+
   /// Los documentos del servidor que firmó [writer] (caja -> ids) y si hay
   /// alguno de otra instalación o sin firma (`foreign`).
   Future<({Map<String, Set<String>> mine, bool foreign})> writtenBy(String writer);
@@ -232,6 +239,20 @@ class FirestoreCloudWalletStore implements CloudWalletStore {
       _unavailable(e);
     }
     return latest;
+  }
+
+  @override
+  Future<void> markMigratedBy(String token) =>
+      _write(() => _root.set({'migratedBy': FieldValue.arrayUnion([token])}, SetOptions(merge: true)));
+
+  @override
+  Future<Set<String>> migratedBy() async {
+    try {
+      final v = (await _root.get(_server)).data()?['migratedBy'];
+      return v is List ? v.whereType<String>().toSet() : <String>{};
+    } on FirebaseException catch (e) {
+      _unavailable(e);
+    }
   }
 
   @override
