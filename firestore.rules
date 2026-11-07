@@ -50,5 +50,13 @@ service cloud.firestore {
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['settled', 'updatedAt'])));
       allow delete: if signedIn() && me() == resource.data.createdBy;
     }
+
+    // Wallet de cada cuenta: solo su dueña.
+    match /wallets/{uid} {
+      allow read, write: if signedIn() && me() == uid;
+      match /{box}/{id} {
+        allow read, write: if signedIn() && me() == uid;
+      }
+    }
   }
 }

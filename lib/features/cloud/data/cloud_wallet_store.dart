@@ -1,0 +1,201 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+
+import '../../../core/storage/local_store.dart';
+import '../../../core/storage/sync_scope.dart';
+
+/// Un documento de la wallet en la nube. `json == null` significa borrado.
+class CloudDoc {
+  const CloudDoc({required this.box, required this.id, required this.json});
+  final String box;
+  final String id;
+  final Map<String, Object?>? json;
+}
+
+/// Cambios de una caja con los metadatos de Firestore.
+class CloudSnapshot {
+  const CloudSnapshot({required this.changes, required this.fromCache, required this.hasPendingWrites});
+  final List<CloudDoc> changes;
+  final bool fromCache;
+  final bool hasPendingWrites;
+}
+
+/// La nube no respondió. [permissionDenied] distingue reglas/sesión de red.
+class CloudUnavailable implements Exception {
+  const CloudUnavailable({required this.permissionDenied, this.cause});
+  final bool permissionDenied;
+  final Object? cause;
+
+  @override
+  String toString() => 'CloudUnavailable(permissionDenied: $permissionDenied, $cause)';
+}
+
+/// Almacén remoto de la wallet de una cuenta: `wallets/{uid}/{caja}/{id}`.
+abstract interface class CloudWalletStore {
+  Future<void> put(String box, String id, Map<String, Object?> json);
+  Future<void> delete(String box, String id);
+
+  /// caja -> id -> json, solo del servidor.
+  Future<Map<String, Map<String, Map<String, Object?>>>> readAll();
+
+  /// Sube todo en lotes de 400; termina con la confirmación del servidor.
+  Future<void> uploadAll(Map<String, Map<String, Map<String, Object?>>> docs);
+
+  Stream<CloudSnapshot> watch(String box);
+  Future<DateTime?> resetAt();
+
+  /// Borra todas las colecciones y escribe `resetAt`.
+  Future<void> wipe(DateTime at);
+}
+
+const _batchSize = 400;
+
+/// Cajas que viven en la nube (la de ajustes solo con [kSyncedSettings]).
+final List<String> _allBoxes = [...kSyncedBoxes, LocalStore.settingsBox];
+
+/// Firestore no admite en claves de mapa `.`, `/`, vacías ni que empiecen
+/// por `__`. Se codifican con porcentaje, de forma reversible.
+String _encodeKey(String k) {
+  if (k.isEmpty) return '%';
+  var s = k.replaceAll('%', '%25').replaceAll('.', '%2E').replaceAll('/', '%2F');
+  if (s.startsWith('__')) s = '%5F${s.substring(1)}';
+  return s;
+}
+
+String _decodeKey(String k) {
+  if (k == '%') return '';
+  const map = {'%5F': '_', '%2E': '.', '%2F': '/', '%25': '%'};
+  return k.replaceAllMapped(RegExp('%(5F|2E|2F|25)'), (m) => map[m[0]]!);
+}
+
+Object? _walk(Object? v, String Function(String) key) {
+  if (v is Map) return {for (final e in v.entries) key(e.key as String): _walk(e.value, key)};
+  if (v is List) return [for (final x in v) _walk(x, key)];
+  return v;
+}
+
+Map<String, Object?> _decodeJson(Object? raw) => (_walk(raw, _decodeKey) as Map).cast<String, Object?>();
+
+class FirestoreCloudWalletStore implements CloudWalletStore {
+  FirestoreCloudWalletStore(this._db, this._uid);
+  final FirebaseFirestore _db;
+  final String _uid;
+
+  static const _server = GetOptions(source: Source.server);
+
+  DocumentReference<Map<String, dynamic>> get _root => _db.collection('wallets').doc(_uid);
+  CollectionReference<Map<String, dynamic>> _col(String box) => _root.collection(box);
+
+  void _check(String box, String id) {
+    if (!_allBoxes.contains(box)) throw ArgumentError.value(box, 'box', 'Caja no sincronizada');
+    if (!isSynced(box, id)) throw ArgumentError.value(id, 'id', 'Documento no sincronizado');
+  }
+
+  Map<String, Object?> _data(Map<String, Object?> json) => {
+        'json': _walk(json, _encodeKey),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+  Never _unavailable(FirebaseException e) =>
+      throw CloudUnavailable(permissionDenied: e.code == 'permission-denied', cause: e);
+
+  @override
+  Future<void> put(String box, String id, Map<String, Object?> json) {
+    _check(box, id);
+    return _col(box).doc(id).set(_data(json));
+  }
+
+  @override
+  Future<void> delete(String box, String id) => _col(box).doc(id).delete();
+
+  @override
+  Future<Map<String, Map<String, Map<String, Object?>>>> readAll() async {
+    final out = <String, Map<String, Map<String, Object?>>>{};
+    try {
+      for (final box in _allBoxes) {
+        final snap = await _col(box).get(_server);
+        if (snap.metadata.isFromCache) throw const CloudUnavailable(permissionDenied: false);
+        out[box] = {
+          for (final d in snap.docs)
+            if (d.data()['json'] != null && isSynced(box, d.id)) d.id: _decodeJson(d.data()['json']),
+        };
+      }
+    } on FirebaseException catch (e) {
+      debugPrint('Lectura de la wallet sin servidor: $e');
+      _unavailable(e);
+    }
+    return out;
+  }
+
+  @override
+  Future<void> uploadAll(Map<String, Map<String, Map<String, Object?>>> docs) async {
+    final entries = [
+      for (final b in docs.entries)
+        for (final d in b.value.entries) (box: b.key, id: d.key, json: d.value),
+    ];
+    for (final e in entries) {
+      _check(e.box, e.id);
+    }
+    try {
+      for (var i = 0; i < entries.length; i += _batchSize) {
+        final batch = _db.batch();
+        for (final e in entries.skip(i).take(_batchSize)) {
+          batch.set(_col(e.box).doc(e.id), _data(e.json));
+        }
+        await batch.commit();
+      }
+    } on FirebaseException catch (e) {
+      _unavailable(e);
+    }
+  }
+
+  @override
+  Stream<CloudSnapshot> watch(String box) => _col(box).snapshots(includeMetadataChanges: true).map((snap) {
+        return CloudSnapshot(
+          changes: [
+            for (final c in snap.docChanges)
+              if (isSynced(box, c.doc.id))
+                CloudDoc(
+                  box: box,
+                  id: c.doc.id,
+                  json: c.type == DocumentChangeType.removed || c.doc.data()?['json'] == null
+                      ? null
+                      : _decodeJson(c.doc.data()!['json']),
+                ),
+          ],
+          fromCache: snap.metadata.isFromCache,
+          hasPendingWrites: snap.metadata.hasPendingWrites,
+        );
+      });
+
+  @override
+  Future<DateTime?> resetAt() async {
+    try {
+      final snap = await _root.get(_server);
+      final v = snap.data()?['resetAt'];
+      return v is String ? DateTime.parse(v) : null;
+    } on FirebaseException catch (e) {
+      _unavailable(e);
+    }
+  }
+
+  @override
+  Future<void> wipe(DateTime at) async {
+    try {
+      for (final box in _allBoxes) {
+        final snap = await _col(box).get();
+        final refs = snap.docs.map((d) => d.reference).toList();
+        for (var i = 0; i < refs.length; i += _batchSize) {
+          final batch = _db.batch();
+          for (final r in refs.skip(i).take(_batchSize)) {
+            batch.delete(r);
+          }
+          await batch.commit();
+        }
+      }
+      await _root.set({'resetAt': at.toIso8601String()});
+    } on FirebaseException catch (e) {
+      _unavailable(e);
+    }
+  }
+}
